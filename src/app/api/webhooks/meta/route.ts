@@ -36,22 +36,31 @@ export async function POST(request: NextRequest) {
   const signature = request.headers.get("x-hub-signature-256");
   const appSecret = process.env.META_APP_SECRET!;
 
+  console.log("[webhook] POST received, body length:", rawBody.length);
+
   // Verify the request came from Meta
   if (!verifyWebhookSignature(rawBody, signature, appSecret)) {
+    console.log("[webhook] Signature verification FAILED");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
+  console.log("[webhook] Signature verified OK");
+
   const payload: MetaWebhookPayload = JSON.parse(rawBody);
+  console.log("[webhook] Object:", payload.object, "Entries:", payload.entry.length);
 
   // Determine platform from payload
   const platform: Platform =
     payload.object === "instagram" ? "instagram_dm" : "facebook_messenger";
 
   for (const entry of payload.entry) {
+    console.log("[webhook] Entry id:", entry.id, "messaging:", entry.messaging?.length || 0, "changes:", entry.changes?.length || 0);
+
     // --- Handle DMs (entry.messaging) ---
     const messagingEvents = entry.messaging || [];
 
     for (const event of messagingEvents) {
+      console.log("[webhook] DM event from:", event.sender.id, "text:", event.message?.text?.slice(0, 50));
       if (!event.message?.text) continue; // skip non-text messages for now
 
       processIncomingMessage({
