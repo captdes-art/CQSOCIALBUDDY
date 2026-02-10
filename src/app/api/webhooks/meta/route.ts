@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST — Receive incoming messages and comments from Meta.
- * Returns 200 immediately, then processes async.
+ * Processes all events, then returns 200.
+ * Must await processing because Vercel terminates serverless functions
+ * after the response is sent.
  */
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
@@ -53,6 +55,10 @@ export async function POST(request: NextRequest) {
   const platform: Platform =
     payload.object === "instagram" ? "instagram_dm" : "facebook_messenger";
 
+  // Collect all processing promises so we can await them
+  // (Vercel kills serverless functions after the response is sent)
+  const tasks: Promise<void>[] = [];
+
   for (const entry of payload.entry) {
     console.log("[webhook] Entry id:", entry.id, "messaging:", entry.messaging?.length || 0, "changes:", entry.changes?.length || 0);
 
@@ -63,17 +69,19 @@ export async function POST(request: NextRequest) {
       console.log("[webhook] DM event from:", event.sender.id, "text:", event.message?.text?.slice(0, 50));
       if (!event.message?.text) continue; // skip non-text messages for now
 
-      processIncomingMessage({
-        platform,
-        senderId: event.sender.id,
-        recipientId: event.recipient.id,
-        messageId: event.message.mid,
-        text: event.message.text,
-        timestamp: event.timestamp,
-        sourceType: "dm",
-      }).catch((err) => {
-        console.error("Error processing DM:", err);
-      });
+      tasks.push(
+        processIncomingMessage({
+          platform,
+          senderId: event.sender.id,
+          recipientId: event.recipient.id,
+          messageId: event.message.mid,
+          text: event.message.text,
+          timestamp: event.timestamp,
+          sourceType: "dm",
+        }).catch((err) => {
+          console.error("Error processing DM:", err);
+        })
+      );
     }
 
     // --- Handle comments (entry.changes) ---
@@ -91,44 +99,51 @@ export async function POST(request: NextRequest) {
         // Skip comments from our own page (don't process our own replies)
         if (value.from.id === entry.id) continue;
 
-        processIncomingMessage({
-          platform: "facebook_messenger",
-          senderId: value.from.id,
-          recipientId: entry.id, // page ID
-          messageId: value.comment_id,
-          text: value.message,
-          timestamp: value.created_time * 1000,
-          sourceType: "comment",
-          sourcePostId: value.post_id,
-          commentId: value.comment_id,
-          senderName: value.from.name || null,
-        }).catch((err) => {
-          console.error("Error processing FB comment:", err);
-        });
+        tasks.push(
+          processIncomingMessage({
+            platform: "facebook_messenger",
+            senderId: value.from.id,
+            recipientId: entry.id, // page ID
+            messageId: value.comment_id,
+            text: value.message,
+            timestamp: value.created_time * 1000,
+            sourceType: "comment",
+            sourcePostId: value.post_id,
+            commentId: value.comment_id,
+            senderName: value.from.name || null,
+          }).catch((err) => {
+            console.error("Error processing FB comment:", err);
+          })
+        );
       } else if (payload.object === "instagram" && change.field === "comments") {
         // Instagram comment
         const value = change.value as MetaInstagramCommentValue;
 
         if (!value.text) continue;
 
-        processIncomingMessage({
-          platform: "instagram_dm",
-          senderId: value.from.id,
-          recipientId: entry.id, // IG user ID
-          messageId: value.id,
-          text: value.text,
-          timestamp: entry.time * 1000,
-          sourceType: "comment",
-          sourcePostId: value.media.id,
-          commentId: value.id,
-          senderName: value.from.username || null,
-        }).catch((err) => {
-          console.error("Error processing IG comment:", err);
-        });
+        tasks.push(
+          processIncomingMessage({
+            platform: "instagram_dm",
+            senderId: value.from.id,
+            recipientId: entry.id, // IG user ID
+            messageId: value.id,
+            text: value.text,
+            timestamp: entry.time * 1000,
+            sourceType: "comment",
+            sourcePostId: value.media.id,
+            commentId: value.id,
+            senderName: value.from.username || null,
+          }).catch((err) => {
+            console.error("Error processing IG comment:", err);
+          })
+        );
       }
     }
   }
 
-  // Return 200 immediately as Meta requires
+  // Wait for all processing to complete before returning
+  await Promise.allSettled(tasks);
+  console.log("[webhook] All tasks complete, returning 200");
+
   return NextResponse.json({ status: "ok" });
 }
