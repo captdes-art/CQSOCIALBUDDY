@@ -15,6 +15,6 @@ export const config = {
      * - public folder files
      * - API webhook routes (they have their own auth via signature verification)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/webhooks).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/webhooks|api/test-pipeline).*)",
   ],
 };
