@@ -29,9 +29,10 @@ export default function IntegrationsPage() {
       icon: "📸",
     },
     {
-      name: "Vapi Knowledge Base",
-      description: "AI-powered response generation from your knowledge base",
-      status: !!process.env.NEXT_PUBLIC_SUPABASE_URL, // placeholder check
+      name: "Custom RAG Knowledge Base",
+      description: "AI response generation via Celtic Quest Voice AI RAG endpoint",
+      status: true,
+      setupUrl: "https://celtic-quest-voice-ai.vercel.app",
       icon: "🤖",
     },
     {

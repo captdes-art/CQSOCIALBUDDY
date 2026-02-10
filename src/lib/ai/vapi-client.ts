@@ -5,63 +5,94 @@ interface VapiQueryResponse {
   raw: Record<string, unknown>;
 }
 
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 /**
- * Query the Vapi knowledge base for a response to a customer message.
- * Includes conversation history for context.
+ * Query the custom Celtic Quest RAG knowledge base hosted on Vercel.
+ * Uses the OpenAI-compatible /chat/completions endpoint.
+ * Includes conversation history for multi-turn context.
  */
 export async function queryVapiKnowledgeBase(params: {
   message: string;
   conversationHistory?: string[];
 }): Promise<VapiQueryResponse> {
+  const ragUrl = process.env.VAPI_RAG_URL;
   const apiKey = process.env.VAPI_API_KEY;
-  const knowledgeBaseId = process.env.VAPI_KNOWLEDGE_BASE_ID;
 
-  if (!apiKey || !knowledgeBaseId) {
-    throw new Error("Vapi API key or knowledge base ID not configured");
+  if (!ragUrl) {
+    throw new Error("VAPI_RAG_URL not configured");
   }
 
-  // Build context from conversation history
-  const context = params.conversationHistory?.length
-    ? `Previous messages:\n${params.conversationHistory.join("\n")}\n\nCurrent message: ${params.message}`
-    : params.message;
+  // Build messages array in OpenAI chat format
+  const messages: ChatMessage[] = [];
+
+  // Add system message for social media response context
+  messages.push({
+    role: "system",
+    content:
+      "You are a helpful assistant for Celtic Quest Fishing. " +
+      "Answer customer questions accurately using the knowledge base. " +
+      "Keep responses friendly, concise, and suitable for social media DMs.",
+  });
+
+  // Add conversation history as alternating user/assistant messages
+  if (params.conversationHistory?.length) {
+    for (const msg of params.conversationHistory) {
+      if (msg.startsWith("Customer: ")) {
+        messages.push({ role: "user", content: msg.replace("Customer: ", "") });
+      } else if (msg.startsWith("Celtic Quest: ")) {
+        messages.push({
+          role: "assistant",
+          content: msg.replace("Celtic Quest: ", ""),
+        });
+      }
+    }
+  }
+
+  // Add the current message
+  messages.push({ role: "user", content: params.message });
 
   try {
-    const response = await fetch(
-      `https://api.vapi.ai/knowledge-base/${knowledgeBaseId}/query`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          query: context,
-          topK: 5,
-        }),
-      }
-    );
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    // Include API key as Bearer token if configured
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(`${ragUrl}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ messages }),
+    });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
+      const errorText = await response.text().catch(() => "");
       throw new Error(
-        `Vapi API error: ${error.message || response.statusText}`
+        `RAG API error (${response.status}): ${errorText || response.statusText}`
       );
     }
 
-    const data = await response.json();
+    // The RAG endpoint returns a streaming SSE response.
+    // Collect all chunks into a complete answer.
+    const body = await response.text();
+    const { answer, finishReason } = parseSSEResponse(body);
 
-    // Extract answer and estimate confidence from the response
-    const answer = data.answer || data.text || "";
-    const confidence = estimateConfidence(data);
+    const confidence = estimateConfidence(answer, finishReason);
 
     return {
       answer,
       confidence,
-      sources: data.sources || [],
-      raw: data,
+      sources: [],
+      raw: { finishReason, streamResponse: true },
     };
   } catch (error) {
-    console.error("Vapi query failed:", error);
+    console.error("RAG knowledge base query failed:", error);
     // Return a low-confidence fallback so the message gets flagged
     return {
       answer: "",
@@ -72,28 +103,59 @@ export async function queryVapiKnowledgeBase(params: {
 }
 
 /**
- * Estimate confidence from Vapi response data.
- * Uses similarity scores if available, otherwise heuristics.
+ * Parse a streaming SSE response into a complete answer string.
+ * Each line is formatted as: data: {"choices":[{"delta":{"content":"word"}}]}
  */
-function estimateConfidence(data: Record<string, unknown>): number {
-  // If Vapi returns a confidence/score directly
-  if (typeof data.confidence === "number") return data.confidence;
-  if (typeof data.score === "number") return data.score;
+function parseSSEResponse(body: string): {
+  answer: string;
+  finishReason: string | null;
+} {
+  let answer = "";
+  let finishReason: string | null = null;
 
-  // If there are source results with scores
-  const sources = data.sources as Array<{ score?: number }> | undefined;
-  if (sources?.length) {
-    const avgScore =
-      sources.reduce((sum, s) => sum + (s.score || 0), 0) / sources.length;
-    if (avgScore > 0) return Math.min(avgScore, 1);
+  for (const line of body.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data: ") || trimmed === "data: [DONE]") continue;
+
+    try {
+      const json = JSON.parse(trimmed.slice(6));
+      const delta = json.choices?.[0]?.delta;
+      if (delta?.content) {
+        answer += delta.content;
+      }
+      if (json.choices?.[0]?.finish_reason) {
+        finishReason = json.choices[0].finish_reason;
+      }
+    } catch {
+      // Skip malformed lines
+    }
   }
 
-  // If we got an answer back, give it moderate confidence
-  const answer = data.answer || data.text;
-  if (answer && typeof answer === "string" && answer.length > 20) {
+  return { answer, finishReason };
+}
+
+/**
+ * Estimate confidence from the RAG response.
+ * Uses response quality heuristics since the custom RAG
+ * may not return explicit confidence scores.
+ */
+function estimateConfidence(
+  answer: string,
+  finishReason: string | null
+): number {
+  if (finishReason === "stop" && answer.length > 50) {
+    return 0.85; // Clean completion with substantial answer
+  }
+
+  if (finishReason === "stop" && answer.length > 20) {
+    return 0.7; // Clean completion with shorter answer
+  }
+
+  // If we got a reasonable answer back
+  if (answer && answer.length > 20) {
     return 0.6;
   }
 
-  // No good answer
+  // Short or empty answer — low confidence
   return 0.2;
 }
