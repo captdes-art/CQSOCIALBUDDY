@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -33,14 +32,22 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-6 py-5 border-b">
-        <Anchor className="h-6 w-6 text-primary" />
-        <span className="font-semibold text-lg">CQ Social Buddy</span>
+    <div
+      className="flex flex-col h-full text-white"
+      style={{ background: "linear-gradient(180deg, #312e81, #4338ca, #6366f1)" }}
+    >
+      <div className="flex items-center gap-3 px-5 py-6 border-b border-white/10">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
+          <Anchor className="h-5 w-5 text-white" />
+        </div>
+        <span className="font-semibold text-[16px]">CQ Social Buddy</span>
       </div>
 
       <ScrollArea className="flex-1 py-4">
         <nav className="px-3 space-y-1">
+          <p className="px-3 mb-2 text-[10px] font-semibold text-white/40 uppercase tracking-[1.2px]">
+            Main
+          </p>
           {navigation.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -50,23 +57,21 @@ export function MobileNav() {
                 key={item.name}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium transition-all",
                   isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-white/[0.18] text-white"
+                    : "text-white/60 hover:bg-white/10 hover:text-white"
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-[18px] w-[18px]" />
                 {item.name}
               </Link>
             );
           })}
         </nav>
 
-        <Separator className="my-4" />
-
-        <nav className="px-3 space-y-1">
-          <p className="px-3 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <nav className="px-3 mt-6 space-y-1">
+          <p className="px-3 mb-2 text-[10px] font-semibold text-white/40 uppercase tracking-[1.2px]">
             Settings
           </p>
           {settingsNav.map((item) => {
@@ -76,13 +81,13 @@ export function MobileNav() {
                 key={item.name}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium transition-all",
                   isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-white/[0.18] text-white"
+                    : "text-white/60 hover:bg-white/10 hover:text-white"
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-[18px] w-[18px]" />
                 {item.name}
               </Link>
             );

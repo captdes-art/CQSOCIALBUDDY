@@ -4,6 +4,7 @@ import { useStats } from "@/hooks/use-stats";
 import { useConversations } from "@/hooks/use-conversations";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ClassificationChart } from "@/components/dashboard/classification-chart";
+import { WelcomeBanner } from "@/components/dashboard/welcome-banner";
 import { ConversationCard } from "@/components/inbox/conversation-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,13 +23,9 @@ export default function DashboardPage() {
   const pendingConversations = pendingData?.conversations?.slice(0, 5) || [];
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Celtic Quest Social Media Command Center
-        </p>
-      </div>
+    <div className="p-4 lg:p-7 space-y-6">
+      {/* Welcome Banner */}
+      <WelcomeBanner stats={stats} isLoading={statsLoading} />
 
       {/* Stats */}
       {statsLoading ? (
@@ -44,15 +41,19 @@ export default function DashboardPage() {
         />
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         {/* Pending approvals */}
-        <Card>
+        <Card className="rounded-[14px] border-border shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-[15px] font-semibold">
               Pending Approvals
             </CardTitle>
             <Link href="/inbox?status=draft_ready">
-              <Button variant="ghost" size="sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary font-semibold text-[13px] hover:text-indigo-600"
+              >
                 View all
                 <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
