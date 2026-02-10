@@ -4,7 +4,12 @@ import {
   handleVerificationChallenge,
 } from "@/lib/meta/webhooks";
 import { processIncomingMessage } from "@/lib/ai/processor";
-import type { MetaWebhookPayload, Platform } from "@/types";
+import type {
+  MetaWebhookPayload,
+  MetaFeedChangeValue,
+  MetaInstagramCommentValue,
+  Platform,
+} from "@/types";
 
 /**
  * GET — Meta webhook verification challenge.
@@ -23,7 +28,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST — Receive incoming messages from Meta.
+ * POST — Receive incoming messages and comments from Meta.
  * Returns 200 immediately, then processes async.
  */
 export async function POST(request: NextRequest) {
@@ -42,14 +47,13 @@ export async function POST(request: NextRequest) {
   const platform: Platform =
     payload.object === "instagram" ? "instagram_dm" : "facebook_messenger";
 
-  // Process each entry (message event)
   for (const entry of payload.entry) {
+    // --- Handle DMs (entry.messaging) ---
     const messagingEvents = entry.messaging || [];
 
     for (const event of messagingEvents) {
       if (!event.message?.text) continue; // skip non-text messages for now
 
-      // Fire and forget — don't block the webhook response
       processIncomingMessage({
         platform,
         senderId: event.sender.id,
@@ -57,9 +61,62 @@ export async function POST(request: NextRequest) {
         messageId: event.message.mid,
         text: event.message.text,
         timestamp: event.timestamp,
+        sourceType: "dm",
       }).catch((err) => {
-        console.error("Error processing message:", err);
+        console.error("Error processing DM:", err);
       });
+    }
+
+    // --- Handle comments (entry.changes) ---
+    const changeEvents = entry.changes || [];
+
+    for (const change of changeEvents) {
+      if (payload.object === "page" && change.field === "feed") {
+        // Facebook Page comment
+        const value = change.value as MetaFeedChangeValue;
+
+        // Only process new comments (not edits/removals), only comment items
+        if (value.verb !== "add" || value.item !== "comment") continue;
+        if (!value.message) continue;
+
+        // Skip comments from our own page (don't process our own replies)
+        if (value.from.id === entry.id) continue;
+
+        processIncomingMessage({
+          platform: "facebook_messenger",
+          senderId: value.from.id,
+          recipientId: entry.id, // page ID
+          messageId: value.comment_id,
+          text: value.message,
+          timestamp: value.created_time * 1000,
+          sourceType: "comment",
+          sourcePostId: value.post_id,
+          commentId: value.comment_id,
+          senderName: value.from.name || null,
+        }).catch((err) => {
+          console.error("Error processing FB comment:", err);
+        });
+      } else if (payload.object === "instagram" && change.field === "comments") {
+        // Instagram comment
+        const value = change.value as MetaInstagramCommentValue;
+
+        if (!value.text) continue;
+
+        processIncomingMessage({
+          platform: "instagram_dm",
+          senderId: value.from.id,
+          recipientId: entry.id, // IG user ID
+          messageId: value.id,
+          text: value.text,
+          timestamp: entry.time * 1000,
+          sourceType: "comment",
+          sourcePostId: value.media.id,
+          commentId: value.id,
+          senderName: value.from.username || null,
+        }).catch((err) => {
+          console.error("Error processing IG comment:", err);
+        });
+      }
     }
   }
 

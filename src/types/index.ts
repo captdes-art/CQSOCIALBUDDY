@@ -139,6 +139,7 @@ export interface MetaWebhookEntry {
   id: string;
   time: number;
   messaging?: MetaMessagingEvent[];
+  changes?: MetaChangeEvent[];
 }
 
 export interface MetaMessagingEvent {
@@ -153,6 +154,31 @@ export interface MetaMessagingEvent {
       payload: { url: string };
     }>;
   };
+}
+
+export interface MetaChangeEvent {
+  field: "feed" | "comments" | string;
+  value: MetaFeedChangeValue | MetaInstagramCommentValue;
+}
+
+/** Facebook Page feed change (comments on posts) */
+export interface MetaFeedChangeValue {
+  item: "comment" | "post" | "reaction" | string;
+  comment_id: string;
+  post_id: string;
+  parent_id?: string;
+  from: { id: string; name?: string };
+  message?: string;
+  created_time: number;
+  verb: "add" | "edited" | "remove" | string;
+}
+
+/** Instagram comment webhook value */
+export interface MetaInstagramCommentValue {
+  id: string;
+  text: string;
+  from: { id: string; username?: string };
+  media: { id: string };
 }
 
 export interface MetaWebhookPayload {

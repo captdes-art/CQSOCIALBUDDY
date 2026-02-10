@@ -12,6 +12,10 @@ interface IncomingMessageParams {
   messageId: string;
   text: string;
   timestamp: number;
+  sourceType?: "dm" | "comment";
+  sourcePostId?: string;
+  commentId?: string;
+  senderName?: string | null;
 }
 
 /**
@@ -44,10 +48,11 @@ export async function processIncomingMessage(
     .single();
 
   // Fetch customer profile (best effort)
-  let customerName: string | null = null;
+  // For comments, the sender name may come from the webhook payload directly
+  let customerName: string | null = params.senderName || null;
   let customerAvatar: string | null = null;
 
-  if (account) {
+  if (account && !customerName) {
     try {
       const profile = await getUserProfile(params.senderId, {
         accessToken: account.access_token,
@@ -59,8 +64,14 @@ export async function processIncomingMessage(
     }
   }
 
+  const sourceType = params.sourceType || "dm";
+
   // Find or create conversation
-  const conversationId = `${params.platform}:${params.senderId}`;
+  // For DMs: group by sender. For comments: group by post so all comments on one post are one conversation.
+  const conversationId =
+    sourceType === "comment" && params.sourcePostId
+      ? `${params.platform}:comment:${params.sourcePostId}`
+      : `${params.platform}:${params.senderId}`;
 
   const { data: existingConversation } = await supabase
     .from("conversations")
@@ -97,7 +108,8 @@ export async function processIncomingMessage(
         status: "new",
         last_message_at: new Date(params.timestamp).toISOString(),
         last_message_preview: params.text.slice(0, 100),
-        source_type: "dm",
+        source_type: sourceType,
+        source_post_id: params.sourcePostId || null,
       })
       .select("id")
       .single();
@@ -137,6 +149,9 @@ export async function processIncomingMessage(
     metadata: {
       platform: params.platform,
       message_id: params.messageId,
+      source_type: sourceType,
+      ...(params.commentId && { comment_id: params.commentId }),
+      ...(params.sourcePostId && { post_id: params.sourcePostId }),
     },
   });
 

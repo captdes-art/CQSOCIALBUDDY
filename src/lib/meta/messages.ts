@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server";
-import { sendMessage } from "./client";
+import { sendMessage, replyToComment } from "./client";
 import type { Platform } from "@/types";
 
 // Rate limiting: track sends per hour per platform
@@ -27,7 +27,8 @@ function checkRateLimit(platform: string): boolean {
 
 /**
  * Send an approved reply back to the customer via Meta Graph API.
- * Handles rate limiting and logs the activity.
+ * Handles both DM replies and comment replies.
+ * Includes rate limiting and activity logging.
  */
 export async function sendReply(params: {
   conversationId: string;
@@ -51,6 +52,8 @@ export async function sendReply(params: {
   // Determine platform
   const metaPlatform: "facebook" | "instagram" =
     conversation.platform === "facebook_messenger" ? "facebook" : "instagram";
+
+  const isComment = conversation.source_type === "comment";
 
   // Check if this is a test conversation (from test-pipeline endpoint)
   const isTestConversation =
@@ -82,19 +85,45 @@ export async function sendReply(params: {
       return { success: false, error: `No active ${metaPlatform} account configured` };
     }
 
-    // Send via Meta API
-    const result = await sendMessage({
-      recipientId: conversation.customer_platform_id,
-      message: params.content,
-      accessToken: account.access_token,
-      pageId: account.platform_account_id,
-      platform: metaPlatform,
-    });
-    messageId = result.messageId;
+    if (isComment) {
+      // For comments, find the most recent inbound comment ID to reply to
+      const { data: lastInboundMsg } = await supabase
+        .from("messages")
+        .select("platform_message_id")
+        .eq("conversation_id", params.conversationId)
+        .eq("direction", "inbound")
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      const commentIdToReply = lastInboundMsg?.platform_message_id;
+
+      if (!commentIdToReply) {
+        return { success: false, error: "No comment found to reply to" };
+      }
+
+      // Reply to the comment on the post
+      const result = await replyToComment({
+        commentId: commentIdToReply,
+        message: params.content,
+        accessToken: account.access_token,
+        platform: metaPlatform,
+      });
+      messageId = result.commentId;
+    } else {
+      // Send as DM
+      const result = await sendMessage({
+        recipientId: conversation.customer_platform_id,
+        message: params.content,
+        accessToken: account.access_token,
+        pageId: account.platform_account_id,
+        platform: metaPlatform,
+      });
+      messageId = result.messageId;
+    }
   }
 
   try {
-
     // Store the outbound message
     await supabase.from("messages").insert({
       conversation_id: params.conversationId,
@@ -132,7 +161,11 @@ export async function sendReply(params: {
       user_id: params.approvedBy,
       conversation_id: params.conversationId,
       action: "reply_sent",
-      metadata: { draft_id: params.draftId, platform_message_id: messageId },
+      metadata: {
+        draft_id: params.draftId,
+        platform_message_id: messageId,
+        reply_type: isComment ? "comment" : "dm",
+      },
     });
 
     return { success: true };

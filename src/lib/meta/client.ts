@@ -60,6 +60,47 @@ export async function sendMessage({
 }
 
 /**
+ * Reply to a comment on a Facebook or Instagram post.
+ * Facebook: POST /{comment_id}/comments
+ * Instagram: POST /{comment_id}/replies
+ */
+export async function replyToComment({
+  commentId,
+  message,
+  accessToken,
+  platform,
+}: {
+  commentId: string;
+  message: string;
+  accessToken: string;
+  platform: "facebook" | "instagram";
+}): Promise<{ commentId: string }> {
+  const endpoint =
+    platform === "facebook"
+      ? `${GRAPH_API_BASE}/${commentId}/comments`
+      : `${GRAPH_API_BASE}/${commentId}/replies`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `Meta API comment reply error: ${error.error?.message || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+  return { commentId: data.id };
+}
+
+/**
  * Fetch a user's profile info from Meta.
  */
 export async function getUserProfile(
