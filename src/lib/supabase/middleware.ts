@@ -32,7 +32,8 @@ export async function updateSession(request: NextRequest) {
   // Allow webhook endpoints and public routes without auth
   const isPublicRoute =
     request.nextUrl.pathname.startsWith("/api/webhooks") ||
-    request.nextUrl.pathname.startsWith("/login");
+    request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/auth/callback");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
