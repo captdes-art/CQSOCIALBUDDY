@@ -52,35 +52,48 @@ export async function sendReply(params: {
   const metaPlatform: "facebook" | "instagram" =
     conversation.platform === "facebook_messenger" ? "facebook" : "instagram";
 
-  // Check rate limit
-  if (!checkRateLimit(metaPlatform)) {
-    return {
-      success: false,
-      error: "Rate limit reached. Message queued for later.",
-    };
-  }
+  // Check if this is a test conversation (from test-pipeline endpoint)
+  const isTestConversation =
+    conversation.customer_platform_id?.startsWith("test-");
 
-  // Get access token for the platform
-  const { data: account } = await supabase
-    .from("platform_accounts")
-    .select("*")
-    .eq("platform", metaPlatform)
-    .eq("is_active", true)
-    .single();
+  let messageId: string;
 
-  if (!account) {
-    return { success: false, error: `No active ${metaPlatform} account configured` };
-  }
+  if (isTestConversation) {
+    // Skip Meta API for test conversations — just simulate sending
+    messageId = `test-reply-${Date.now()}`;
+  } else {
+    // Check rate limit
+    if (!checkRateLimit(metaPlatform)) {
+      return {
+        success: false,
+        error: "Rate limit reached. Message queued for later.",
+      };
+    }
 
-  try {
+    // Get access token for the platform
+    const { data: account } = await supabase
+      .from("platform_accounts")
+      .select("*")
+      .eq("platform", metaPlatform)
+      .eq("is_active", true)
+      .single();
+
+    if (!account) {
+      return { success: false, error: `No active ${metaPlatform} account configured` };
+    }
+
     // Send via Meta API
-    const { messageId } = await sendMessage({
+    const result = await sendMessage({
       recipientId: conversation.customer_platform_id,
       message: params.content,
       accessToken: account.access_token,
       pageId: account.platform_account_id,
       platform: metaPlatform,
     });
+    messageId = result.messageId;
+  }
+
+  try {
 
     // Store the outbound message
     await supabase.from("messages").insert({
