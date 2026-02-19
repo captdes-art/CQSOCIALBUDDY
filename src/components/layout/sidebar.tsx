@@ -11,6 +11,7 @@ import {
   Users,
   Plug,
   Anchor,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,6 +26,7 @@ const navigation = [
 
 const settingsNav = [
   { name: "General", href: "/settings", icon: Settings },
+  { name: "Auto-Reply", href: "/settings/auto-reply", icon: Bot },
   { name: "Team", href: "/settings/team", icon: Users },
   { name: "Integrations", href: "/settings/integrations", icon: Plug },
 ];

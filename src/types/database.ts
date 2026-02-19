@@ -14,6 +14,66 @@ export type Database = {
   }
   public: {
     Tables: {
+      auto_reply_settings: {
+        Row: {
+          id: string
+          global_auto_reply_enabled: boolean
+          dm_faq_mode: string
+          dm_booking_mode: string
+          dm_compliment_mode: string
+          dm_complaint_mode: string
+          dm_complex_mode: string
+          dm_spam_mode: string
+          comment_auto_reply_enabled: boolean
+          comment_public_reply_text: string
+          comment_delay_min_seconds: number
+          comment_delay_max_seconds: number
+          confidence_threshold: number
+          auto_draft_delay_minutes: number
+          max_auto_replies_per_hour: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          global_auto_reply_enabled?: boolean
+          dm_faq_mode?: string
+          dm_booking_mode?: string
+          dm_compliment_mode?: string
+          dm_complaint_mode?: string
+          dm_complex_mode?: string
+          dm_spam_mode?: string
+          comment_auto_reply_enabled?: boolean
+          comment_public_reply_text?: string
+          comment_delay_min_seconds?: number
+          comment_delay_max_seconds?: number
+          confidence_threshold?: number
+          auto_draft_delay_minutes?: number
+          max_auto_replies_per_hour?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          global_auto_reply_enabled?: boolean
+          dm_faq_mode?: string
+          dm_booking_mode?: string
+          dm_compliment_mode?: string
+          dm_complaint_mode?: string
+          dm_complex_mode?: string
+          dm_spam_mode?: string
+          comment_auto_reply_enabled?: boolean
+          comment_public_reply_text?: string
+          comment_delay_min_seconds?: number
+          comment_delay_max_seconds?: number
+          confidence_threshold?: number
+          auto_draft_delay_minutes?: number
+          max_auto_replies_per_hour?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       activity_log: {
         Row: {
           action: string
@@ -60,6 +120,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          auto_send_at: string | null
           classification: string
           confidence_score: number
           conversation_id: string
@@ -75,6 +136,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          auto_send_at?: string | null
           classification: string
           confidence_score?: number
           conversation_id: string
@@ -90,6 +152,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          auto_send_at?: string | null
           classification?: string
           confidence_score?: number
           conversation_id?: string

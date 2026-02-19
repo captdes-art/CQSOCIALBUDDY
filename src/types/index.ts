@@ -185,3 +185,30 @@ export interface MetaWebhookPayload {
   object: "page" | "instagram";
   entry: MetaWebhookEntry[];
 }
+
+// Auto-reply settings types
+export type AutomationMode = "auto_send" | "auto_draft" | "manual" | "ignore";
+
+export interface AutoReplySettings {
+  id: string;
+  global_auto_reply_enabled: boolean;
+  // Per-classification DM modes
+  dm_faq_mode: AutomationMode;
+  dm_booking_mode: AutomationMode;
+  dm_compliment_mode: AutomationMode;
+  dm_complaint_mode: AutomationMode;
+  dm_complex_mode: AutomationMode;
+  dm_spam_mode: AutomationMode;
+  // Comment controls
+  comment_auto_reply_enabled: boolean;
+  comment_public_reply_text: string;
+  comment_delay_min_seconds: number;
+  comment_delay_max_seconds: number;
+  // Thresholds
+  confidence_threshold: number;
+  auto_draft_delay_minutes: number;
+  max_auto_replies_per_hour: number;
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+}
