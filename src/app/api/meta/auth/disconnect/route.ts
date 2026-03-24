@@ -19,7 +19,7 @@ export async function POST() {
     const { error } = await admin
       .from("platform_accounts")
       .update({ is_active: false })
-      .eq("connected_by", user.id);
+      .eq("is_active", true);
 
     if (error) throw error;
 
