@@ -79,8 +79,7 @@ export default function IntegrationsPage() {
       toast.error("META_APP_ID is not configured");
       return;
     }
-    // TEMP: redirect to debug endpoint to see errors as JSON
-    const redirectUri = `${window.location.origin}/api/meta/auth/debug`;
+    const redirectUri = `${window.location.origin}/api/meta/auth/callback`;
     const scopes = [
       "pages_show_list",
       "pages_read_engagement",
