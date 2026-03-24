@@ -7,7 +7,11 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  // Build baseUrl from the request's Host header to match what the browser sent.
+  // NEVER use NEXT_PUBLIC_APP_URL — it gets baked in at build time from .env.local.
+  const host = request.headers.get("host") || request.nextUrl.host;
+  const protocol = request.headers.get("x-forwarded-proto") || "https";
+  const baseUrl = `${protocol}://${host}`;
 
   if (error) {
     console.error("Facebook OAuth error:", error, searchParams.get("error_description"));
