@@ -53,7 +53,14 @@ export async function GET(request: NextRequest) {
     debug.expiresIn = expiresIn;
     debug.step = "got long token";
 
-    // Step 3: Fetch pages
+    // Step 3: Check what permissions were actually granted
+    const permsRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/permissions?access_token=${longToken}`
+    );
+    const permsData = await permsRes.json();
+    debug.permissions = permsData.data || permsData;
+
+    // Step 4: Fetch pages
     const pages = await getUserPages(longToken);
     debug.pagesCount = pages.length;
     debug.pages = pages.map((p) => ({
@@ -61,6 +68,14 @@ export async function GET(request: NextRequest) {
       name: p.name,
       hasIG: !!p.instagram_business_account,
     }));
+
+    // Step 5: Also try fetching accounts with explicit fields
+    const accountsRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?access_token=${longToken}`
+    );
+    const accountsData = await accountsRes.json();
+    debug.rawAccounts = accountsData;
+
     debug.step = "complete";
   } catch (err) {
     debug.error = err instanceof Error ? err.message : String(err);
