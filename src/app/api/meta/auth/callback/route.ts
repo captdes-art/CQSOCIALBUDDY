@@ -24,9 +24,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const redirectUri = `${baseUrl}/api/meta/auth/callback`;
+    console.log("[oauth-callback] baseUrl:", baseUrl);
+    console.log("[oauth-callback] redirectUri:", redirectUri);
+    console.log("[oauth-callback] code length:", code.length);
 
     // 1. Exchange code for short-lived token
     const { accessToken: shortToken } = await exchangeCodeForToken(code, redirectUri);
+    console.log("[oauth-callback] Got short token, length:", shortToken.length);
 
     // 2. Exchange for long-lived user token (60 days)
     const appId = process.env.META_APP_ID!;
@@ -37,8 +41,11 @@ export async function GET(request: NextRequest) {
       appSecret
     );
 
+    console.log("[oauth-callback] Got long token, expiresIn:", expiresIn);
+
     // 3. Fetch user's pages
     const pages = await getUserPages(longToken);
+    console.log("[oauth-callback] Got pages:", pages.length, pages.map(p => p.name));
 
     if (pages.length === 0) {
       return NextResponse.redirect(
@@ -74,7 +81,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (err) {
-    console.error("Facebook OAuth callback error:", err);
+    console.error("[oauth-callback] FULL ERROR:", err);
     return NextResponse.redirect(
       `${baseUrl}/settings/integrations?error=${encodeURIComponent(err instanceof Error ? err.message : "OAuth failed")}`
     );
