@@ -1,6 +1,7 @@
 "use client";
 
 import { useMessages } from "@/hooks/use-messages";
+import { usePlatformAccounts } from "@/hooks/use-platform-accounts";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,14 @@ export function ConversationDetail({
   onBack,
 }: ConversationDetailProps) {
   const { data, isLoading } = useMessages(conversation.id);
+  const { data: accounts } = usePlatformAccounts();
   const queryClient = useQueryClient();
+
+  // Find the connected account for this conversation's platform
+  const isFacebook = conversation.platform === "facebook_messenger";
+  const connectedAccount = accounts?.find((a) =>
+    isFacebook ? a.platform === "facebook" : a.platform === "instagram"
+  );
 
   const initials = (conversation.customer_name || "?")
     .split(" ")
@@ -56,9 +64,13 @@ export function ConversationDetail({
             <PlatformBadge platform={conversation.platform} />
           </div>
           <p className="text-xs text-muted-foreground">
-            {conversation.platform === "facebook_messenger"
-              ? "Facebook Messenger"
-              : "Instagram Direct"}
+            {isFacebook ? "Facebook Messenger" : "Instagram Direct"}
+            {connectedAccount && (
+              <span className="ml-1">
+                — Replying as {isFacebook ? connectedAccount.account_name : `@${connectedAccount.account_name}`}
+                {" "}(ID: {connectedAccount.platform_account_id})
+              </span>
+            )}
           </p>
         </div>
       </div>

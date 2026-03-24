@@ -5,6 +5,7 @@ import {
   handleVerificationChallenge,
 } from "@/lib/meta/webhooks";
 import { processIncomingMessage } from "@/lib/ai/processor";
+import { createAdminClient } from "@/lib/supabase/server";
 import type {
   MetaWebhookPayload,
   MetaFeedChangeValue,
@@ -54,6 +55,26 @@ export async function POST(request: NextRequest) {
 
   const payload: MetaWebhookPayload = JSON.parse(rawBody);
   console.log("[webhook] Object:", payload.object, "Entries:", payload.entry.length);
+
+  // Log webhook event for pages_manage_metadata compliance
+  try {
+    const admin = createAdminClient();
+    for (const entry of payload.entry) {
+      const eventType = entry.messaging?.length
+        ? "message"
+        : entry.changes?.[0]?.field || "unknown";
+
+      await admin.from("webhook_events").insert({
+        platform: payload.object === "instagram" ? "instagram" : "facebook",
+        event_type: eventType,
+        page_id: entry.id,
+        payload: entry as unknown as Record<string, never>,
+        processed: false,
+      });
+    }
+  } catch (err) {
+    console.error("[webhook] Failed to log webhook event:", err);
+  }
 
   // Determine platform from payload
   const platform: Platform =

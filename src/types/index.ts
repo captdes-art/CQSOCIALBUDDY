@@ -50,6 +50,21 @@ export interface PlatformAccount {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  user_access_token: string | null;
+  user_token_expires_at: string | null;
+  instagram_business_account_id: string | null;
+  permissions_granted: string[] | null;
+  connected_by: string | null;
+}
+
+export interface WebhookEvent {
+  id: string;
+  platform: "facebook" | "instagram";
+  event_type: string;
+  page_id: string | null;
+  payload: Record<string, unknown>;
+  processed: boolean;
+  created_at: string;
 }
 
 export interface Conversation {

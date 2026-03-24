@@ -347,6 +347,11 @@ export type Database = {
           platform_account_id: string
           token_expires_at: string | null
           updated_at: string
+          user_access_token: string | null
+          user_token_expires_at: string | null
+          instagram_business_account_id: string | null
+          permissions_granted: string[] | null
+          connected_by: string | null
         }
         Insert: {
           access_token: string
@@ -358,6 +363,11 @@ export type Database = {
           platform_account_id: string
           token_expires_at?: string | null
           updated_at?: string
+          user_access_token?: string | null
+          user_token_expires_at?: string | null
+          instagram_business_account_id?: string | null
+          permissions_granted?: string[] | null
+          connected_by?: string | null
         }
         Update: {
           access_token?: string
@@ -369,6 +379,41 @@ export type Database = {
           platform_account_id?: string
           token_expires_at?: string | null
           updated_at?: string
+          user_access_token?: string | null
+          user_token_expires_at?: string | null
+          instagram_business_account_id?: string | null
+          permissions_granted?: string[] | null
+          connected_by?: string | null
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          id: string
+          platform: string
+          event_type: string
+          page_id: string | null
+          payload: Json
+          processed: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          platform: string
+          event_type: string
+          page_id?: string | null
+          payload?: Json
+          processed?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          platform?: string
+          event_type?: string
+          page_id?: string | null
+          payload?: Json
+          processed?: boolean
+          created_at?: string
         }
         Relationships: []
       }

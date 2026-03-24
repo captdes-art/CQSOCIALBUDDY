@@ -12,6 +12,9 @@ import {
   Plug,
   Anchor,
   Bot,
+  TrendingUp,
+  Instagram,
+  Webhook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,6 +25,9 @@ const navigation = [
   { name: "Inbox", href: "/inbox", icon: Inbox, showBadge: true },
   { name: "Flagged", href: "/flagged", icon: AlertTriangle },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Engagement", href: "/engagement", icon: TrendingUp },
+  { name: "Instagram", href: "/instagram", icon: Instagram },
+  { name: "Webhooks", href: "/webhooks", icon: Webhook },
 ];
 
 const settingsNav = [
