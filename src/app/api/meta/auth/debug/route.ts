@@ -97,6 +97,14 @@ export async function GET(request: NextRequest) {
       debug.businessPages = await bizPagesRes.json();
     }
 
+    // Step 9: If no pages found via user token, try the existing FB_PAGE_ACCESS_TOKEN
+    if (pages.length === 0 && process.env.FB_PAGE_ACCESS_TOKEN) {
+      const pageTokenRes = await fetch(
+        `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_business_account{id,username,name,biography,followers_count}&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`
+      );
+      debug.existingPageToken = await pageTokenRes.json();
+    }
+
     debug.step = "complete";
   } catch (err) {
     debug.error = err instanceof Error ? err.message : String(err);
