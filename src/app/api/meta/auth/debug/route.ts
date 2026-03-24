@@ -69,12 +69,33 @@ export async function GET(request: NextRequest) {
       hasIG: !!p.instagram_business_account,
     }));
 
-    // Step 5: Also try fetching accounts with explicit fields
+    // Step 5: Check who the token belongs to
+    const meRes = await fetch(
+      `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${longToken}`
+    );
+    debug.me = await meRes.json();
+
+    // Step 6: Raw accounts call
     const accountsRes = await fetch(
       `https://graph.facebook.com/v21.0/me/accounts?access_token=${longToken}`
     );
-    const accountsData = await accountsRes.json();
-    debug.rawAccounts = accountsData;
+    debug.rawAccounts = await accountsRes.json();
+
+    // Step 7: Try fetching businesses
+    const bizRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/businesses?access_token=${longToken}`
+    );
+    debug.businesses = await bizRes.json();
+
+    // Step 8: If we have a business, try fetching its pages
+    const bizData = debug.businesses as { data?: Array<{ id: string; name: string }> };
+    if (bizData.data && bizData.data.length > 0) {
+      const bizId = bizData.data[0].id;
+      const bizPagesRes = await fetch(
+        `https://graph.facebook.com/v21.0/${bizId}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username,name}&access_token=${longToken}`
+      );
+      debug.businessPages = await bizPagesRes.json();
+    }
 
     debug.step = "complete";
   } catch (err) {
