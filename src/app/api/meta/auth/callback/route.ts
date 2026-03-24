@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken, getUserPages } from "@/lib/meta/oauth";
 import { exchangeForLongLivedToken } from "@/lib/meta/client";
-import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -48,17 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Store pages data temporarily so the page picker can access it
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.redirect(
-        `${baseUrl}/login?error=${encodeURIComponent("Session expired. Please log in again.")}`
-      );
-    }
-
-    // Store the OAuth result in a cookie (encrypted via signed cookie)
-    // The page picker will read this to display pages
+    // Note: user session is checked later in the /connect step
     const oauthData = JSON.stringify({
       userToken: longToken,
       tokenExpiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
@@ -68,7 +57,6 @@ export async function GET(request: NextRequest) {
         accessToken: p.access_token,
         instagramBusinessAccount: p.instagram_business_account || null,
       })),
-      userId: user.id,
     });
 
     const response = NextResponse.redirect(
