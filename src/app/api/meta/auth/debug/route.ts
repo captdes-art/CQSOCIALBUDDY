@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
   const host = request.headers.get("host") || request.nextUrl.host;
   const protocol = request.headers.get("x-forwarded-proto") || "https";
   const baseUrl = `${protocol}://${host}`;
-  const redirectUri = `${baseUrl}/api/meta/auth/callback`;
+  // Must match what the client sent to Facebook — currently /debug
+  const redirectUri = `${baseUrl}/api/meta/auth/debug`;
 
   const debug: Record<string, unknown> = {
     host,
