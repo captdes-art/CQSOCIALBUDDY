@@ -64,6 +64,11 @@ export default function IntegrationsPage() {
     }
   }, [error, connected, queryClient]);
 
+  // DEBUG: visible error display
+  const debugError = error;
+  const debugStep = step;
+  const debugConnected = connected;
+
   // Load pages from cookie when step=select-page
   useEffect(() => {
     if (step === "select-page") {
@@ -142,6 +147,17 @@ export default function IntegrationsPage() {
   return (
     <div className="p-4 lg:p-6 max-w-2xl space-y-6">
       <h1 className="text-2xl font-bold">Integrations</h1>
+
+      {/* DEBUG BANNER — remove after OAuth is working */}
+      {(debugError || debugStep || debugConnected) && (
+        <div className="p-3 rounded-lg border-2 border-red-500 bg-red-50 text-sm font-mono">
+          <p className="font-bold text-red-700 mb-1">DEBUG INFO:</p>
+          {debugError && <p className="text-red-600">Error: {debugError}</p>}
+          {debugStep && <p className="text-blue-600">Step: {debugStep}</p>}
+          {debugConnected && <p className="text-green-600">Connected: {debugConnected}</p>}
+          <p className="text-gray-500 mt-1">URL: {typeof window !== "undefined" ? window.location.href : "SSR"}</p>
+        </div>
+      )}
 
       {/* ── Meta Connection ── */}
       <Card>
