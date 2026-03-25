@@ -46,17 +46,23 @@ export default function IntegrationsPage() {
 
   const step = searchParams.get("step");
   const error = searchParams.get("error");
+  const connected = searchParams.get("connected");
 
   const fbAccount = accounts?.find((a) => a.platform === "facebook");
   const igAccount = accounts?.find((a) => a.platform === "instagram");
   const isConnected = !!fbAccount;
 
-  // Show error from OAuth redirect
+  // Show error or success from OAuth redirect
   useEffect(() => {
     if (error) {
       toast.error(error);
     }
-  }, [error]);
+    if (connected === "true") {
+      toast.success("Connected to Facebook & Instagram!");
+      queryClient.invalidateQueries({ queryKey: ["platform-accounts"] });
+      window.history.replaceState({}, "", "/settings/integrations");
+    }
+  }, [error, connected, queryClient]);
 
   // Load pages from cookie when step=select-page
   useEffect(() => {
