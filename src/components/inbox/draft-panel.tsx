@@ -34,7 +34,7 @@ export function DraftPanel({
   const [manualReply, setManualReply] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
 
-  if (!draft || draft.status === "sent" || draft.status === "rejected") {
+  if (!draft) {
     return (
       <div className="p-4 border-t bg-muted/30">
         <p className="text-sm text-muted-foreground text-center">

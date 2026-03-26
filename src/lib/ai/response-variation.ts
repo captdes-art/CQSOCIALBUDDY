@@ -19,6 +19,14 @@ const SIGN_OFFS = [
   "Fish on! 🐟",
 ];
 
+const BOOKING_OUTROS = [
+  "You can book your trip right here:",
+  "Ready to reserve your spot? Book here:",
+  "Grab your spot before it fills up:",
+  "Here's where you can reserve your trip:",
+  "Lock in your spot here:",
+];
+
 const COMPLIMENT_RESPONSES = [
   "That's so awesome to hear! We love getting people out on the water.",
   "You just made our crew's day! Thanks so much for the kind words.",
@@ -67,6 +75,7 @@ export function applyVariation(params: {
   conversationId: string;
 }): string {
   const { vapiAnswer, classification, conversationId } = params;
+  const bookingUrl = process.env.CHARTER_BOOKER_URL || "";
 
   switch (classification) {
     case "compliment": {
@@ -76,10 +85,12 @@ export function applyVariation(params: {
     }
 
     case "booking": {
-      if (!vapiAnswer?.trim()) return "";
       const greeting = pickVariation(GREETINGS, conversationId, "greeting");
+      const outro = pickVariation(BOOKING_OUTROS, conversationId, "booking_outro");
       const signOff = pickVariation(SIGN_OFFS, conversationId, "signoff");
-      return `${greeting} ${vapiAnswer}\n\n${signOff}`;
+      // Use Vapi answer for the info, add booking link
+      const body = vapiAnswer || "We'd love to get you out on the water!";
+      return `${greeting} ${body}\n\n${outro}\n${bookingUrl}\n\n${signOff}`;
     }
 
     case "faq": {
