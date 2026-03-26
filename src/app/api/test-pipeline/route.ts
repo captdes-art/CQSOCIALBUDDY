@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   try {
     await processIncomingMessage({
       platform: "facebook_messenger",
-      senderId: "test-customer-123",
+      senderId: `test-customer-${Date.now()}`,
       recipientId: "test-page-id",
       messageId: `test-${Date.now()}`,
       text,
