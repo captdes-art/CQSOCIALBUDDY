@@ -25,11 +25,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Also get the latest draft for this conversation
+  // Get the latest actionable draft (skip sent/rejected ones)
   const { data: draft } = await supabase
     .from("ai_drafts")
     .select("*")
     .eq("conversation_id", conversationId)
+    .not("status", "in", '("sent","rejected")')
     .order("created_at", { ascending: false })
     .limit(1)
     .single();
