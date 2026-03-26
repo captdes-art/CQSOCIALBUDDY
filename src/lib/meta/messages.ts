@@ -135,16 +135,18 @@ export async function sendReply(params: {
       sent_at: new Date().toISOString(),
     });
 
-    // Update draft status
-    await supabase
-      .from("ai_drafts")
-      .update({
-        status: "sent",
-        approved_by: params.approvedBy,
-        approved_at: new Date().toISOString(),
-        sent_at: new Date().toISOString(),
-      })
-      .eq("id", params.draftId);
+    // Update draft status (skip for manual replies with no draft)
+    if (params.draftId !== "manual") {
+      await supabase
+        .from("ai_drafts")
+        .update({
+          status: "sent",
+          approved_by: params.approvedBy,
+          approved_at: new Date().toISOString(),
+          sent_at: new Date().toISOString(),
+        })
+        .eq("id", params.draftId);
+    }
 
     // Update conversation status
     await supabase

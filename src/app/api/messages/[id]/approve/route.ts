@@ -36,11 +36,27 @@ export async function POST(
 
   const { draftId, content } = body;
 
-  if (!draftId) {
-    return NextResponse.json({ error: "draftId is required" }, { status: 400 });
+  // Manual reply — no draft needed, just send the content directly
+  if (!draftId || draftId === "manual") {
+    if (!content?.trim()) {
+      return NextResponse.json({ error: "Reply content is required" }, { status: 400 });
+    }
+
+    const result = await sendReply({
+      conversationId,
+      draftId: "manual",
+      content,
+      approvedBy: user.id,
+    });
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   }
 
-  // Get the draft
+  // Draft-based reply — look up the draft
   const { data: draft } = await supabase
     .from("ai_drafts")
     .select("*")
