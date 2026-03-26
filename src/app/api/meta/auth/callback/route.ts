@@ -12,47 +12,56 @@ export async function GET(request: NextRequest) {
   const protocol = request.headers.get("x-forwarded-proto") || "https";
   const baseUrl = `${protocol}://${host}`;
 
-  if (error) {
+  function redirectError(msg: string) {
+    console.error("[oauth] ERROR:", msg);
     return NextResponse.redirect(
-      `${baseUrl}/settings/integrations?error=${encodeURIComponent(searchParams.get("error_description") || "Facebook login was denied")}`
+      `${baseUrl}/settings/integrations?error=${encodeURIComponent(msg)}`
     );
   }
 
+  if (error) {
+    return redirectError(searchParams.get("error_description") || "Facebook login was denied");
+  }
+
   if (!code) {
-    return NextResponse.redirect(
-      `${baseUrl}/settings/integrations?error=${encodeURIComponent("No authorization code received")}`
-    );
+    return redirectError("No authorization code received");
   }
 
   try {
     const redirectUri = `${baseUrl}/api/meta/auth/callback`;
+    console.log("[oauth] Step 1: Exchanging code, redirectUri:", redirectUri);
 
-    // 1. Exchange code to verify OAuth worked
+    // 1. Exchange code for short-lived token
     const { accessToken: shortToken } = await exchangeCodeForToken(code, redirectUri);
+    console.log("[oauth] Step 2: Got short token, exchanging for long-lived");
 
-    // 2. Get long-lived user token
+    // 2. Exchange for long-lived user token
     const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(
       shortToken, process.env.META_APP_ID!, process.env.META_APP_SECRET!
     );
+    console.log("[oauth] Step 3: Got long-lived token, fetching page info");
 
-    // 3. Get page info using the existing page token (business-managed pages
-    //    don't show up in /me/accounts, so we use the token directly)
-    const pageToken = process.env.FB_PAGE_ACCESS_TOKEN!;
+    // 3. Get page info using existing page token
+    const pageToken = process.env.FB_PAGE_ACCESS_TOKEN;
+    if (!pageToken) {
+      return redirectError("FB_PAGE_ACCESS_TOKEN is not configured");
+    }
+
     const pageRes = await fetch(
       `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_business_account{id,username,name,biography,followers_count}&access_token=${pageToken}`
     );
-
     if (!pageRes.ok) {
-      throw new Error("Failed to fetch page info from existing token");
+      const pageErr = await pageRes.json().catch(() => ({}));
+      return redirectError(`Page fetch failed: ${JSON.stringify(pageErr)}`);
     }
 
     const pageData = await pageRes.json();
+    console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);
 
-    // 4. Store directly in database — no page picker needed
+    // 4. Store in database
     const admin = createAdminClient();
 
-    // Upsert Facebook page
-    await admin.from("platform_accounts").upsert(
+    const { error: fbErr } = await admin.from("platform_accounts").upsert(
       {
         platform: "facebook",
         platform_account_id: pageData.id,
@@ -70,10 +79,16 @@ export async function GET(request: NextRequest) {
       { onConflict: "platform,platform_account_id" }
     );
 
-    // Upsert Instagram account if linked
+    if (fbErr) {
+      console.error("[oauth] FB upsert error:", fbErr);
+      return redirectError(`Database error (FB): ${fbErr.message}`);
+    }
+    console.log("[oauth] Step 5: Facebook account saved");
+
+    // 5. Store Instagram account if linked
     if (pageData.instagram_business_account) {
       const ig = pageData.instagram_business_account;
-      await admin.from("platform_accounts").upsert(
+      const { error: igErr } = await admin.from("platform_accounts").upsert(
         {
           platform: "instagram",
           platform_account_id: ig.id,
@@ -87,24 +102,29 @@ export async function GET(request: NextRequest) {
         },
         { onConflict: "platform,platform_account_id" }
       );
+
+      if (igErr) {
+        console.error("[oauth] IG upsert error:", igErr);
+        return redirectError(`Database error (IG): ${igErr.message}`);
+      }
+      console.log("[oauth] Step 6: Instagram account saved");
     }
 
-    // 5. Subscribe page to webhooks
+    // 6. Subscribe page to webhooks (non-fatal)
     try {
       await fetch(`https://graph.facebook.com/v21.0/${pageData.id}/subscribed_apps`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageToken}` },
         body: JSON.stringify({ subscribed_fields: "messages,feed" }),
       });
+      console.log("[oauth] Step 7: Webhook subscription sent");
     } catch (e) {
-      console.error("[oauth-callback] Webhook subscription failed:", e);
+      console.warn("[oauth] Webhook subscription failed (non-fatal):", e);
     }
 
+    console.log("[oauth] DONE — redirecting with connected=true");
     return NextResponse.redirect(`${baseUrl}/settings/integrations?connected=true`);
   } catch (err) {
-    console.error("[oauth-callback] Error:", err);
-    return NextResponse.redirect(
-      `${baseUrl}/settings/integrations?error=${encodeURIComponent(err instanceof Error ? err.message : "OAuth failed")}`
-    );
+    return redirectError(err instanceof Error ? err.message : "OAuth failed");
   }
 }

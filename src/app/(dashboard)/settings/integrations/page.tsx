@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePlatformAccounts } from "@/hooks/use-platform-accounts";
@@ -23,28 +24,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-interface OAuthPage {
-  id: string;
-  name: string;
-  accessToken: string;
-  instagramBusinessAccount?: {
-    id: string;
-    username?: string;
-    name?: string;
-  } | null;
-}
-
 export default function IntegrationsPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { data: accounts, isLoading } = usePlatformAccounts();
-
-  const [pages, setPages] = useState<OAuthPage[]>([]);
-  const [loadingPages, setLoadingPages] = useState(false);
-  const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  const step = searchParams.get("step");
   const error = searchParams.get("error");
   const connected = searchParams.get("connected");
 
@@ -52,7 +37,7 @@ export default function IntegrationsPage() {
   const igAccount = accounts?.find((a) => a.platform === "instagram");
   const isConnected = !!fbAccount;
 
-  // Show error or success from OAuth redirect
+  // Handle OAuth redirect results
   useEffect(() => {
     if (error) {
       toast.error(error);
@@ -63,26 +48,6 @@ export default function IntegrationsPage() {
       window.history.replaceState({}, "", "/settings/integrations");
     }
   }, [error, connected, queryClient]);
-
-  // DEBUG: visible error display
-  const debugError = error;
-  const debugStep = step;
-  const debugConnected = connected;
-
-  // Load pages from cookie when step=select-page
-  useEffect(() => {
-    if (step === "select-page") {
-      setLoadingPages(true);
-      fetch("/api/meta/auth/pages")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.pages) setPages(data.pages);
-          else toast.error(data.error || "Failed to load pages");
-        })
-        .catch(() => toast.error("Failed to load pages"))
-        .finally(() => setLoadingPages(false));
-    }
-  }, [step]);
 
   function handleConnect() {
     const appId = process.env.NEXT_PUBLIC_META_APP_ID;
@@ -100,33 +65,7 @@ export default function IntegrationsPage() {
       "instagram_manage_messages",
     ].join(",");
 
-    const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
-    window.location.href = url;
-  }
-
-  async function handleSelectPage(pageId: string) {
-    setConnecting(pageId);
-    try {
-      const res = await fetch("/api/meta/auth/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      toast.success(`Connected to ${data.page.name}!`);
-      setPages([]);
-      queryClient.invalidateQueries({ queryKey: ["platform-accounts"] });
-
-      // Remove step param
-      window.history.replaceState({}, "", "/settings/integrations");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to connect");
-    } finally {
-      setConnecting(null);
-    }
+    window.location.href = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
   }
 
   async function handleDisconnect() {
@@ -134,7 +73,6 @@ export default function IntegrationsPage() {
     try {
       const res = await fetch("/api/meta/auth/disconnect", { method: "POST" });
       if (!res.ok) throw new Error("Failed to disconnect");
-
       toast.success("Disconnected from Facebook");
       queryClient.invalidateQueries({ queryKey: ["platform-accounts"] });
     } catch (err) {
@@ -148,14 +86,11 @@ export default function IntegrationsPage() {
     <div className="p-4 lg:p-6 max-w-2xl space-y-6">
       <h1 className="text-2xl font-bold">Integrations</h1>
 
-      {/* DEBUG BANNER — remove after OAuth is working */}
-      {(debugError || debugStep || debugConnected) && (
-        <div className="p-3 rounded-lg border-2 border-red-500 bg-red-50 text-sm font-mono">
-          <p className="font-bold text-red-700 mb-1">DEBUG INFO:</p>
-          {debugError && <p className="text-red-600">Error: {debugError}</p>}
-          {debugStep && <p className="text-blue-600">Step: {debugStep}</p>}
-          {debugConnected && <p className="text-green-600">Connected: {debugConnected}</p>}
-          <p className="text-gray-500 mt-1">URL: {typeof window !== "undefined" ? window.location.href : "SSR"}</p>
+      {/* Show OAuth errors persistently so they can't be missed */}
+      {error && (
+        <div className="p-3 rounded-lg border-2 border-red-500 bg-red-50 text-sm">
+          <p className="font-semibold text-red-700">Connection Error:</p>
+          <p className="text-red-600 mt-1">{error}</p>
         </div>
       )}
 
@@ -190,7 +125,6 @@ export default function IntegrationsPage() {
         <CardContent className="space-y-4">
           {isConnected ? (
             <>
-              {/* Connected state */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
                   <div>
@@ -251,52 +185,8 @@ export default function IntegrationsPage() {
                 Disconnect
               </Button>
             </>
-          ) : step === "select-page" ? (
-            <>
-              {/* Page picker */}
-              <p className="text-sm font-medium">Select a Facebook Page to connect:</p>
-              {loadingPages ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : pages.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">
-                  No pages found. Make sure you manage at least one Facebook Page.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {pages.map((page) => (
-                    <div
-                      key={page.id}
-                      className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/30 transition-colors"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{page.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Page ID: {page.id}
-                          {page.instagramBusinessAccount && (
-                            <> | IG: @{page.instagramBusinessAccount.username || page.instagramBusinessAccount.id}</>
-                          )}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => handleSelectPage(page.id)}
-                        disabled={connecting === page.id}
-                      >
-                        {connecting === page.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                        ) : null}
-                        Select
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
           ) : (
             <>
-              {/* Not connected — show Connect button */}
               <Button onClick={handleConnect} className="bg-blue-600 hover:bg-blue-700">
                 <Facebook className="h-4 w-4 mr-2" />
                 Connect with Facebook
