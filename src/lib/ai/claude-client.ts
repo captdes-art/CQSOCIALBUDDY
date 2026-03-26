@@ -3,20 +3,15 @@ import Anthropic from "@anthropic-ai/sdk";
 const PROMPT_BASE_URL =
   process.env.VAPI_RAG_URL || "https://celtic-quest-voice-ai.vercel.app";
 const PROMPT_URL = `${PROMPT_BASE_URL}/get_text_prompt`;
+const KB_URL = `${PROMPT_BASE_URL}/kb_content`;
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 let cachedPrompt: { text: string; fetchedAt: number } | null = null;
 
 /**
- * Fetch the Celtic Quest system prompt from the voice-AI service.
- * Caches for 10 minutes to avoid hammering the endpoint.
- * The endpoint requires HTTP Basic Auth (VOICE_AI_ADMIN_USERNAME / VOICE_AI_ADMIN_PASSWORD).
+ * Build Basic Auth header for Voice AI admin endpoints.
  */
-async function getSystemPrompt(): Promise<string> {
-  if (cachedPrompt && Date.now() - cachedPrompt.fetchedAt < CACHE_TTL) {
-    return cachedPrompt.text;
-  }
-
+function getAuthHeader(): string {
   const username = process.env.VOICE_AI_ADMIN_USERNAME;
   const password = process.env.VOICE_AI_ADMIN_PASSWORD;
 
@@ -26,29 +21,59 @@ async function getSystemPrompt(): Promise<string> {
     );
   }
 
-  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+}
 
-  console.log("[claude] Fetching system prompt from", PROMPT_URL);
-  const response = await fetch(PROMPT_URL, {
-    headers: { Authorization: authHeader },
-  });
+/**
+ * Fetch the Celtic Quest system prompt + knowledge base from the voice-AI service.
+ * The prompt template has a {context} placeholder that gets filled with the KB content.
+ * Caches the assembled prompt for 10 minutes.
+ */
+async function getSystemPrompt(): Promise<string> {
+  if (cachedPrompt && Date.now() - cachedPrompt.fetchedAt < CACHE_TTL) {
+    return cachedPrompt.text;
+  }
 
-  if (!response.ok) {
+  const authHeader = getAuthHeader();
+
+  // Fetch prompt template and knowledge base content in parallel
+  console.log("[claude] Fetching system prompt + knowledge base");
+  const [promptRes, kbRes] = await Promise.all([
+    fetch(PROMPT_URL, { headers: { Authorization: authHeader } }),
+    fetch(KB_URL, { headers: { Authorization: authHeader } }),
+  ]);
+
+  if (!promptRes.ok) {
     throw new Error(
-      `Failed to fetch system prompt: ${response.status} ${response.statusText}`
+      `Failed to fetch system prompt: ${promptRes.status} ${promptRes.statusText}`
     );
   }
 
-  const data = await response.json();
-  // Handle different response shapes from the endpoint
-  const text =
-    typeof data === "string"
-      ? data
-      : data.prompt || data.text || data.system_prompt || JSON.stringify(data);
+  // Extract prompt template
+  const promptData = await promptRes.json();
+  const promptTemplate =
+    typeof promptData === "string"
+      ? promptData
+      : promptData.prompt || promptData.text || promptData.system_prompt || "";
 
-  cachedPrompt = { text, fetchedAt: Date.now() };
-  console.log("[claude] System prompt cached, length:", text.length);
-  return text;
+  // Extract knowledge base content
+  let kbContent = "";
+  if (kbRes.ok) {
+    const kbData = await kbRes.json();
+    kbContent = kbData.content || kbData.text || "";
+    console.log("[claude] Knowledge base loaded, length:", kbContent.length);
+  } else {
+    console.warn("[claude] Failed to fetch KB content:", kbRes.status, "— using prompt template only");
+  }
+
+  // Inject knowledge base into the {context} placeholder
+  const assembled = kbContent
+    ? promptTemplate.replace("{context}", kbContent)
+    : promptTemplate;
+
+  cachedPrompt = { text: assembled, fetchedAt: Date.now() };
+  console.log("[claude] System prompt assembled, length:", assembled.length);
+  return assembled;
 }
 
 /**
