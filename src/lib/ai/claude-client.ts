@@ -96,9 +96,13 @@ export async function generateClaudeReply(params: {
     response.content[0].type === "text" ? response.content[0].text : "";
 
   // Estimate confidence based on response quality
+  // A complete response (end_turn) means Claude finished naturally — high confidence
+  // regardless of length. Short correct answers like "March to October" are still valid.
   const confidence =
-    response.stop_reason === "end_turn" && answer.length > 50
-      ? 0.85
+    response.stop_reason === "end_turn"
+      ? answer.length > 10
+        ? 0.85
+        : 0.7
       : answer.length > 20
         ? 0.7
         : 0.3;

@@ -30,6 +30,18 @@ const BOOKING_KEYWORDS = [
   "fishing trip",
 ];
 
+// Common FAQ question patterns — these should never be flagged as complex
+const FAQ_PATTERNS = [
+  /\b(when|what time|how early|how long|what season)\b/i,
+  /\b(do you (include|provide|offer|have|bring|allow|sell))\b/i,
+  /\b(is there|are there|can i|can we|do i need)\b/i,
+  /\b(where (is|are|do)|how do (i|we))\b/i,
+  /\b(what (do|should|is) (i|we|the|your))\b/i,
+  /\b(rods?|bait|tackle|food|drinks?|beverages?|ice|parking|tip|gratuity)\b/i,
+  /\b(season|depart|dock|location|address|directions|age|kids|children)\b/i,
+  /\b(license|weather|rain|cancel|seasick|bathroom|restroom)\b/i,
+];
+
 const COMPLAINT_KEYWORDS = [
   "refund",
   "cancel",
@@ -119,14 +131,22 @@ export function classifyMessage(
     return { classification: "booking", confidence: Math.min(0.6 + bookingScore, 0.95) };
   }
 
-  // If Vapi confidence is low or message is very long with multiple questions, flag as complex
+  // Check if this looks like a common FAQ question before flagging as complex
+  const isFaqPattern = FAQ_PATTERNS.some((pattern) => pattern.test(text));
+
+  // Only flag as complex for genuinely complex messages:
+  // - Very long messages with multiple questions (not simple FAQ patterns)
+  // - Low confidence AND doesn't match any FAQ pattern
   const questionCount = (text.match(/\?/g) || []).length;
-  if (vapiConfidence < 0.4 || (text.length > 500 && questionCount >= 3)) {
+  if (!isFaqPattern && (text.length > 500 && questionCount >= 3)) {
     return { classification: "complex", confidence: 0.3 };
   }
 
-  // Default: FAQ with Vapi's confidence
-  return { classification: "faq", confidence: vapiConfidence };
+  // Default: FAQ — use Claude's confidence but floor it at 0.7 for FAQ-pattern matches
+  const finalConfidence = isFaqPattern
+    ? Math.max(vapiConfidence, 0.7)
+    : vapiConfidence;
+  return { classification: "faq", confidence: finalConfidence };
 }
 
 /**
