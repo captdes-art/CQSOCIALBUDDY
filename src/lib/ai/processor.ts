@@ -194,7 +194,7 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
   );
 
   // Store the AI draft
-  await supabase.from("ai_drafts").insert({
+  const { error: draftError } = await supabase.from("ai_drafts").insert({
     conversation_id: dbConversationId,
     message_id: storedMessage.id,
     draft_content: draftContent || "(Flagged for manual response)",
@@ -213,6 +213,10 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
       sent_at: new Date().toISOString(),
     }),
   });
+
+  if (draftError) {
+    console.error("[processor:dm] Failed to store AI draft:", draftError.message, draftError.details, draftError.hint);
+  }
 
   // Auto-send immediately if settings allow
   if (doAutoSend) {
