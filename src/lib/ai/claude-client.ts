@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const PROMPT_URL =
-  "https://celtic-quest-voice-ai.vercel.app/get_text_prompt";
+const PROMPT_BASE_URL =
+  process.env.VAPI_RAG_URL || "https://celtic-quest-voice-ai.vercel.app";
+const PROMPT_URL = `${PROMPT_BASE_URL}/get_text_prompt`;
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 let cachedPrompt: { text: string; fetchedAt: number } | null = null;
@@ -9,14 +10,28 @@ let cachedPrompt: { text: string; fetchedAt: number } | null = null;
 /**
  * Fetch the Celtic Quest system prompt from the voice-AI service.
  * Caches for 10 minutes to avoid hammering the endpoint.
+ * The endpoint requires HTTP Basic Auth (VOICE_AI_ADMIN_USERNAME / VOICE_AI_ADMIN_PASSWORD).
  */
 async function getSystemPrompt(): Promise<string> {
   if (cachedPrompt && Date.now() - cachedPrompt.fetchedAt < CACHE_TTL) {
     return cachedPrompt.text;
   }
 
+  const username = process.env.VOICE_AI_ADMIN_USERNAME;
+  const password = process.env.VOICE_AI_ADMIN_PASSWORD;
+
+  if (!username || !password) {
+    throw new Error(
+      "Missing VOICE_AI_ADMIN_USERNAME or VOICE_AI_ADMIN_PASSWORD env vars — cannot fetch knowledge base"
+    );
+  }
+
+  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+
   console.log("[claude] Fetching system prompt from", PROMPT_URL);
-  const response = await fetch(PROMPT_URL);
+  const response = await fetch(PROMPT_URL, {
+    headers: { Authorization: authHeader },
+  });
 
   if (!response.ok) {
     throw new Error(

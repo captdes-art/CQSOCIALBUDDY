@@ -94,6 +94,9 @@ export function applyVariation(params: {
     }
 
     case "faq": {
+      // If Claude didn't produce an answer (e.g. knowledge base fetch failed),
+      // return empty so the message gets flagged for manual response
+      if (!vapiAnswer?.trim()) return "";
       const greeting = pickVariation(GREETINGS, conversationId, "greeting");
       const signOff = pickVariation(SIGN_OFFS, conversationId, "signoff");
       return `${greeting} ${vapiAnswer}\n\n${signOff}`;
