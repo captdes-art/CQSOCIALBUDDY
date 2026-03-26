@@ -96,27 +96,38 @@ export async function generateClaudeReply(params: {
     ? "\n\nThis message is from a Facebook post comment. Keep the response concise and helpful for a public audience."
     : "\n\nThis message is from a Facebook Messenger DM. Be friendly, helpful, and conversational.";
 
-  // Build messages array from conversation history
+  // Build messages array from conversation history.
+  // Anthropic API requires strictly alternating user/assistant roles.
+  // Merge consecutive same-role messages to avoid API errors.
   const messages: Anthropic.MessageParam[] = [];
 
   if (params.conversationHistory?.length) {
     for (const msg of params.conversationHistory) {
-      if (msg.startsWith("Customer: ")) {
-        messages.push({
-          role: "user",
-          content: msg.replace("Customer: ", ""),
-        });
-      } else if (msg.startsWith("Celtic Quest: ")) {
-        messages.push({
-          role: "assistant",
-          content: msg.replace("Celtic Quest: ", ""),
-        });
+      const isCustomer = msg.startsWith("Customer: ");
+      const role = isCustomer ? "user" : "assistant";
+      const content = isCustomer
+        ? msg.replace("Customer: ", "")
+        : msg.replace("Celtic Quest: ", "");
+
+      if (!content) continue;
+
+      const last = messages[messages.length - 1];
+      if (last && last.role === role) {
+        // Merge consecutive same-role messages
+        last.content += `\n${content}`;
+      } else {
+        messages.push({ role, content });
       }
     }
   }
 
-  // Add the current message
-  messages.push({ role: "user", content: params.message });
+  // Add the current message (merge if last message is also from user)
+  const last = messages[messages.length - 1];
+  if (last && last.role === "user") {
+    last.content += `\n${params.message}`;
+  } else {
+    messages.push({ role: "user", content: params.message });
+  }
 
   console.log(
     "[claude] Calling Claude Sonnet, messages:",
