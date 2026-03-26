@@ -39,7 +39,10 @@ export async function GET(request: NextRequest) {
     const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(
       shortToken, process.env.META_APP_ID!, process.env.META_APP_SECRET!
     );
-    console.log("[oauth] Step 3: Got long-lived token, fetching page info");
+    const tokenExpiry = expiresIn
+      ? new Date(Date.now() + expiresIn * 1000).toISOString()
+      : null;
+    console.log("[oauth] Step 3: Got long-lived token, expiresIn:", expiresIn);
 
     // 3. Get page info using existing page token
     const pageToken = process.env.FB_PAGE_ACCESS_TOKEN;
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
         account_name: pageData.name,
         access_token: pageToken,
         user_access_token: longToken,
-        user_token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        user_token_expires_at: tokenExpiry,
         instagram_business_account_id: pageData.instagram_business_account?.id || null,
         permissions_granted: [
           "pages_show_list", "pages_read_engagement", "pages_manage_metadata",
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest) {
           account_name: ig.username || ig.name || pageData.name,
           access_token: pageToken,
           user_access_token: longToken,
-          user_token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+          user_token_expires_at: tokenExpiry,
           instagram_business_account_id: ig.id,
           permissions_granted: ["instagram_basic", "instagram_manage_messages"],
           is_active: true,
