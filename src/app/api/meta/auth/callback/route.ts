@@ -44,21 +44,24 @@ export async function GET(request: NextRequest) {
       : null;
     console.log("[oauth] Step 3: Got long-lived token, expiresIn:", expiresIn);
 
-    // 3. Get page info using existing page token
-    const pageToken = process.env.FB_PAGE_ACCESS_TOKEN;
-    if (!pageToken) {
-      return redirectError("FB_PAGE_ACCESS_TOKEN is not configured");
-    }
-
-    const pageRes = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_business_account{id,username,name,biography,followers_count}&access_token=${pageToken}`
+    // 3. Get pages the user manages using the long-lived user token
+    const pagesRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${longToken}`
     );
-    if (!pageRes.ok) {
-      const pageErr = await pageRes.json().catch(() => ({}));
-      return redirectError(`Page fetch failed: ${JSON.stringify(pageErr)}`);
+    if (!pagesRes.ok) {
+      const pagesErr = await pagesRes.json().catch(() => ({}));
+      return redirectError(`Pages fetch failed: ${JSON.stringify(pagesErr)}`);
     }
 
-    const pageData = await pageRes.json();
+    const pagesData = await pagesRes.json();
+    const pages = pagesData.data || [];
+    if (pages.length === 0) {
+      return redirectError("No Facebook Pages found. Make sure your account manages at least one Page.");
+    }
+
+    // Use the first page (most users have one page connected)
+    const pageData = pages[0];
+    const pageToken = pageData.access_token;
     console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);
 
     // 4. Store in database
