@@ -91,10 +91,11 @@ export function applyVariation(params: {
       return `${greeting} ${vapiAnswer}\n\n${signOff}`;
     }
 
-    // Complaints and complex messages should NOT have auto-drafted responses
+    // Complaints and complex messages: keep Claude's answer as a suggested draft
+    // for admin review — it will never be auto-sent (processor enforces this)
     case "complaint":
     case "complex":
-      return "";
+      return vapiAnswer;
 
     case "spam":
       return "";
