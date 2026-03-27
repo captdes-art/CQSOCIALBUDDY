@@ -148,14 +148,17 @@ export async function sendReply(params: {
         .eq("id", params.draftId);
     }
 
-    // Update conversation status
+    // Update conversation — keep flagged status so admins must explicitly clear it
+    const conversationUpdate: Record<string, unknown> = {
+      last_message_at: new Date().toISOString(),
+      last_message_preview: params.content.slice(0, 100),
+    };
+    if (conversation.status !== "flagged") {
+      conversationUpdate.status = "sent";
+    }
     await supabase
       .from("conversations")
-      .update({
-        status: "sent",
-        last_message_at: new Date().toISOString(),
-        last_message_preview: params.content.slice(0, 100),
-      })
+      .update(conversationUpdate)
       .eq("id", params.conversationId);
 
     // Log activity

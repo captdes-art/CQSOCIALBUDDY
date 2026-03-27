@@ -114,6 +114,14 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
 
   if (!storedMessage) return;
 
+  // Check if this conversation is currently flagged — if so, force manual-only mode
+  const { data: currentConv } = await supabase
+    .from("conversations")
+    .select("status")
+    .eq("id", dbConversationId)
+    .single();
+  const isConversationFlagged = currentConv?.status === "flagged";
+
   // Get conversation history for context (last 5 messages)
   const conversationHistory = await getConversationHistory(
     supabase,
@@ -152,9 +160,10 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
   });
 
   // ── Determine behavior from settings ──
-  const mode = getAutomationMode(settings, classification);
-  const doAutoSend = checkAutoSend(settings, classification, confidence) && !!draftContent;
-  const doAutoDraft = checkAutoDraft(settings, classification, confidence) && !!draftContent;
+  // Flagged conversations are locked down — AI can draft but never auto-send
+  const mode = isConversationFlagged ? "manual" : getAutomationMode(settings, classification);
+  const doAutoSend = !isConversationFlagged && checkAutoSend(settings, classification, confidence) && !!draftContent;
+  const doAutoDraft = !isConversationFlagged && checkAutoDraft(settings, classification, confidence) && !!draftContent;
 
   let newStatus: string;
   let draftStatus: string;
@@ -254,11 +263,11 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
     }
   }
 
-  // Update conversation status
+  // Update conversation status — flagged conversations stay flagged
   await supabase
     .from("conversations")
     .update({
-      status: newStatus,
+      status: isConversationFlagged ? "flagged" : newStatus,
       classification,
       ...(newStatus === "sent" && draftContent && {
         last_message_preview: draftContent.slice(0, 100),
@@ -530,15 +539,27 @@ async function findOrCreateConversation(
     .single();
 
   if (existing) {
+    // Check current status — preserve "flagged" so admins must explicitly clear it
+    const { data: currentConv } = await supabase
+      .from("conversations")
+      .select("status")
+      .eq("id", existing.id)
+      .single();
+
+    const updateData: Record<string, unknown> = {
+      customer_name: params.customerName || undefined,
+      customer_avatar_url: params.customerAvatar || undefined,
+      last_message_at: new Date(params.timestamp).toISOString(),
+      last_message_preview: params.text.slice(0, 100),
+    };
+    // Only reset to "new" if not flagged
+    if (currentConv?.status !== "flagged") {
+      updateData.status = "new";
+    }
+
     await supabase
       .from("conversations")
-      .update({
-        customer_name: params.customerName || undefined,
-        customer_avatar_url: params.customerAvatar || undefined,
-        last_message_at: new Date(params.timestamp).toISOString(),
-        last_message_preview: params.text.slice(0, 100),
-        status: "new",
-      })
+      .update(updateData)
       .eq("id", existing.id);
 
     return existing.id;

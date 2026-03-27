@@ -92,6 +92,7 @@ export function ConversationDetail({
       <DraftPanel
         draft={data?.draft || null}
         conversationId={conversation.id}
+        conversationStatus={conversation.status}
         onAction={handleAction}
       />
     </div>

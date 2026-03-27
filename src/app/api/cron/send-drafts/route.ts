@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
   const now = new Date().toISOString();
 
   // Find pending drafts that should be auto-sent
+  // Exclude flagged conversations — those require explicit admin approval
   const { data: drafts, error } = await supabase
     .from("ai_drafts")
     .select(`
@@ -30,12 +31,14 @@ export async function GET(request: NextRequest) {
       conversations!inner (
         customer_platform_id,
         platform,
-        source_type
+        source_type,
+        status
       )
     `)
     .eq("status", "pending")
     .not("auto_send_at", "is", null)
     .lte("auto_send_at", now)
+    .neq("conversations.status", "flagged")
     .limit(10); // Process max 10 per run to stay within limits
 
   if (error) {

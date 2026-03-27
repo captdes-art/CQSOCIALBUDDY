@@ -5,6 +5,7 @@ import {
   Check,
   Edit3,
   Flag,
+  FlagOff,
   EyeOff,
   Loader2,
   Send,
@@ -21,12 +22,14 @@ import type { AiDraft } from "@/types";
 interface DraftPanelProps {
   draft: AiDraft | null;
   conversationId: string;
+  conversationStatus?: string;
   onAction: () => void; // Called after any action to refresh data
 }
 
 export function DraftPanel({
   draft,
   conversationId,
+  conversationStatus,
   onAction,
 }: DraftPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -34,9 +37,51 @@ export function DraftPanel({
   const [manualReply, setManualReply] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
 
+  async function handleClearFlag() {
+    setLoading("unflag");
+    try {
+      const res = await fetch(`/api/messages/${conversationId}/unflag`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Failed to clear flag");
+      toast.success("Flag cleared — AI auto-reply restored");
+      onAction();
+    } catch {
+      toast.error("Failed to clear flag");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  const isFlagged = conversationStatus === "flagged";
+
   if (!draft || draft.status === "sent" || draft.status === "rejected") {
     return (
       <div className="p-4 border-t bg-muted/30">
+        {isFlagged && (
+          <div className="flex items-center justify-between mb-3 p-2 rounded-md bg-destructive/10 border border-destructive/20">
+            <span className="text-xs font-medium text-destructive flex items-center gap-1">
+              <Flag className="h-3 w-3" />
+              Flagged — AI auto-reply paused
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={loading === "unflag"}
+              onClick={handleClearFlag}
+            >
+              {loading === "unflag" ? (
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+              ) : (
+                <FlagOff className="h-3 w-3 mr-1" />
+              )}
+              Clear Flag
+            </Button>
+          </div>
+        )}
         <p className="text-sm text-muted-foreground text-center">
           No AI draft available
         </p>
@@ -139,6 +184,29 @@ export function DraftPanel({
 
   return (
     <div className="border-t bg-muted/20">
+      {/* Flagged banner */}
+      {isFlagged && (
+        <div className="flex items-center justify-between px-4 py-2 bg-destructive/10 border-b border-destructive/20">
+          <span className="text-xs font-medium text-destructive flex items-center gap-1">
+            <Flag className="h-3 w-3" />
+            Flagged — AI auto-reply paused. Approve drafts manually.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={loading === "unflag"}
+            onClick={handleClearFlag}
+          >
+            {loading === "unflag" ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : (
+              <FlagOff className="h-3 w-3 mr-1" />
+            )}
+            Clear Flag
+          </Button>
+        </div>
+      )}
       {/* Draft header */}
       <div className="flex items-center justify-between px-4 py-2 border-b">
         <div className="flex items-center gap-2">
