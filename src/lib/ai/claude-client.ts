@@ -84,7 +84,7 @@ export async function generateClaudeReply(params: {
   message: string;
   conversationHistory?: string[];
   isComment?: boolean;
-}): Promise<{ answer: string; confidence: number }> {
+}): Promise<{ answer: string; confidence: number; sentiment: string }> {
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
@@ -95,6 +95,19 @@ export async function generateClaudeReply(params: {
   const channelContext = params.isComment
     ? "\n\nThis message is from a Facebook post comment. Keep the response concise and helpful for a public audience."
     : "\n\nThis message is from a Facebook Messenger DM. Be friendly, helpful, and conversational.";
+
+  // Ask Claude to classify the customer's sentiment
+  const classificationInstruction = `
+
+IMPORTANT: Before your reply, output a single JSON line with your classification of the customer's message sentiment. Use this exact format on the first line:
+{"sentiment":"<one of: positive, neutral, negative, complaint>"}
+
+Use "complaint" for ANY expression of dissatisfaction, unhappiness, frustration, anger, or negative experience — even mild ones like "I was unhappy" or "not great". When in doubt between negative and complaint, choose complaint.
+Use "negative" for mildly negative but not complaint-worthy messages (e.g. "the weather was bad").
+Use "positive" for compliments, thanks, excitement.
+Use "neutral" for questions, booking inquiries, general info requests.
+
+Then write your reply on the next line. Do NOT include the JSON in your reply text.`;
 
   // Build messages array from conversation history.
   // Anthropic API requires strictly alternating user/assistant roles.
@@ -139,16 +152,33 @@ export async function generateClaudeReply(params: {
   const response = await client.messages.create({
     model: "claude-sonnet-4-5-20250929",
     max_tokens: 1024,
-    system: systemPrompt + channelContext,
+    system: systemPrompt + channelContext + classificationInstruction,
     messages,
   });
 
-  const answer =
+  const rawText =
     response.content[0].type === "text" ? response.content[0].text : "";
 
+  // Parse sentiment from the first line and extract the actual reply
+  let sentiment = "neutral";
+  let answer = rawText;
+
+  const firstLineEnd = rawText.indexOf("\n");
+  if (firstLineEnd > 0) {
+    const firstLine = rawText.slice(0, firstLineEnd).trim();
+    try {
+      const parsed = JSON.parse(firstLine);
+      if (parsed.sentiment) {
+        sentiment = parsed.sentiment;
+        answer = rawText.slice(firstLineEnd + 1).trim();
+      }
+    } catch {
+      // If parsing fails, use the full text as the answer
+      console.warn("[claude] Could not parse sentiment JSON from first line:", firstLine);
+    }
+  }
+
   // Estimate confidence based on response quality
-  // A complete response (end_turn) means Claude finished naturally — high confidence
-  // regardless of length. Short correct answers like "March to October" are still valid.
   const confidence =
     response.stop_reason === "end_turn"
       ? answer.length > 10
@@ -165,5 +195,5 @@ export async function generateClaudeReply(params: {
     confidence
   );
 
-  return { answer, confidence };
+  return { answer, confidence, sentiment };
 }

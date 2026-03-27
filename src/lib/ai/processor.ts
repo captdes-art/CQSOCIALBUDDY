@@ -131,6 +131,7 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
   // Call Claude for the response
   let claudeAnswer: string;
   let claudeConfidence: number;
+  let claudeSentiment: string = "neutral";
 
   try {
     const claudeResult = await generateClaudeReply({
@@ -140,17 +141,26 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
     });
     claudeAnswer = claudeResult.answer;
     claudeConfidence = claudeResult.confidence;
+    claudeSentiment = claudeResult.sentiment;
   } catch (err) {
     console.error("[processor:dm] Claude API failed:", err);
     claudeAnswer = "";
     claudeConfidence = 0;
   }
 
-  // Classify the message
-  const { classification, confidence } = classifyMessage(
+  // Classify the message — keyword-based first, then override with Claude's sentiment
+  let { classification, confidence } = classifyMessage(
     params.text,
     claudeConfidence
   );
+
+  // Claude's sentiment detection is more reliable than keyword matching.
+  // If Claude says it's a complaint but keywords missed it, override.
+  if (claudeSentiment === "complaint" && classification !== "complaint") {
+    console.log("[processor:dm] Claude detected complaint sentiment, overriding keyword classification:", classification, "→ complaint");
+    classification = "complaint";
+    confidence = Math.max(confidence, 0.8);
+  }
 
   // Apply response variation to the Claude answer
   const draftContent = applyVariation({
@@ -169,7 +179,11 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
   let draftStatus: string;
   let autoSendAt: string | null = null;
 
-  if (mode === "ignore") {
+  // Complaints are always flagged — never auto-sent regardless of settings
+  if (classification === "complaint") {
+    newStatus = "flagged";
+    draftStatus = "pending";
+  } else if (mode === "ignore") {
     newStatus = "ignored";
     draftStatus = "rejected";
   } else if (doAutoSend) {
