@@ -35,29 +35,7 @@ export async function GET(request: NextRequest) {
     const { accessToken: shortToken } = await exchangeCodeForToken(code, redirectUri);
     console.log("[oauth] Step 2: Got short token");
 
-    // 2. Fetch pages using the short-lived token (most reliable — fresh from OAuth)
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${shortToken}`
-    );
-    if (!pagesRes.ok) {
-      const pagesErr = await pagesRes.json().catch(() => ({}));
-      return redirectError(`Pages fetch failed: ${JSON.stringify(pagesErr)}`);
-    }
-
-    const pagesData = await pagesRes.json();
-    const pages = pagesData.data || [];
-    console.log("[oauth] Step 3: Found", pages.length, "pages");
-    if (pages.length === 0) {
-      return redirectError("No Facebook Pages found. Make sure your account manages at least one Page.");
-    }
-
-    // Use the first page (most users have one page connected)
-    const pageData = pages[0];
-    // The page access token from /me/accounts is already a long-lived page token
-    const pageToken = pageData.access_token;
-    console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);
-
-    // 3. Exchange user token for long-lived (for token refresh later)
+    // 2. Exchange for long-lived user token (for refresh later)
     let longToken = shortToken;
     let tokenExpiry: string | null = null;
     try {
@@ -68,20 +46,64 @@ export async function GET(request: NextRequest) {
       tokenExpiry = longResult.expiresIn
         ? new Date(Date.now() + longResult.expiresIn * 1000).toISOString()
         : null;
-      console.log("[oauth] Step 5: Got long-lived user token, expiresIn:", longResult.expiresIn);
+      console.log("[oauth] Step 3: Got long-lived user token, expiresIn:", longResult.expiresIn);
     } catch (e) {
-      console.warn("[oauth] Long-lived token exchange failed (non-fatal), using short token:", e);
+      console.warn("[oauth] Long-lived token exchange failed (non-fatal):", e);
     }
+
+    // 3. Try to get pages via /me/accounts with the user tokens
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pageData: any = null;
+    let pageToken: string | null = null;
+
+    for (const token of [shortToken, longToken]) {
+      const pagesRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${token}`
+      );
+      if (pagesRes.ok) {
+        const pagesData = await pagesRes.json();
+        const pages = pagesData.data || [];
+        console.log("[oauth] /me/accounts returned", pages.length, "pages");
+        if (pages.length > 0) {
+          pageData = pages[0];
+          pageToken = pageData.access_token;
+          break;
+        }
+      }
+    }
+
+    // 4. Fallback: use FB_PAGE_ACCESS_TOKEN to fetch page info directly
+    if (!pageData) {
+      console.log("[oauth] /me/accounts returned no pages, falling back to FB_PAGE_ACCESS_TOKEN");
+      const staticToken = process.env.FB_PAGE_ACCESS_TOKEN;
+      if (!staticToken) {
+        return redirectError("Could not find Facebook Pages. FB_PAGE_ACCESS_TOKEN is also not configured as fallback.");
+      }
+
+      const pageRes = await fetch(
+        `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_business_account{id,username,name,biography,followers_count}&access_token=${staticToken}`
+      );
+      if (!pageRes.ok) {
+        const pageErr = await pageRes.json().catch(() => ({}));
+        return redirectError(`Page fetch failed: ${JSON.stringify(pageErr)}`);
+      }
+
+      pageData = await pageRes.json();
+      pageToken = staticToken;
+    }
+
+    console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);
 
     // 4. Store in database
     const admin = createAdminClient();
+    const finalToken = pageToken!;
 
     const { error: fbErr } = await admin.from("platform_accounts").upsert(
       {
         platform: "facebook",
         platform_account_id: pageData.id,
         account_name: pageData.name,
-        access_token: pageToken,
+        access_token: finalToken,
         user_access_token: longToken,
         user_token_expires_at: tokenExpiry,
         instagram_business_account_id: pageData.instagram_business_account?.id || null,
@@ -108,7 +130,7 @@ export async function GET(request: NextRequest) {
           platform: "instagram",
           platform_account_id: ig.id,
           account_name: ig.username || ig.name || pageData.name,
-          access_token: pageToken,
+          access_token: finalToken,
           user_access_token: longToken,
           user_token_expires_at: tokenExpiry,
           instagram_business_account_id: ig.id,
@@ -129,7 +151,7 @@ export async function GET(request: NextRequest) {
     try {
       await fetch(`https://graph.facebook.com/v21.0/${pageData.id}/subscribed_apps`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${pageToken}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${finalToken}` },
         body: JSON.stringify({ subscribed_fields: "messages,feed" }),
       });
       console.log("[oauth] Step 7: Webhook subscription sent");
