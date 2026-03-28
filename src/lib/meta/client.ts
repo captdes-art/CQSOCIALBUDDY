@@ -1,5 +1,54 @@
 const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 
+/**
+ * Split a long message into chunks that fit within a character limit.
+ * Splits at paragraph breaks first, then sentence breaks, then word breaks.
+ */
+function splitMessage(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Try to split at a paragraph break (\n\n)
+    let splitAt = remaining.lastIndexOf("\n\n", maxLength);
+
+    // If no paragraph break, try a single line break
+    if (splitAt <= 0) {
+      splitAt = remaining.lastIndexOf("\n", maxLength);
+    }
+
+    // If no line break, try a sentence break (. ! ?)
+    if (splitAt <= 0) {
+      const sentenceMatch = remaining.slice(0, maxLength).match(/[\s\S]*[.!?]\s/);
+      if (sentenceMatch) {
+        splitAt = sentenceMatch[0].length;
+      }
+    }
+
+    // Last resort: split at a space
+    if (splitAt <= 0) {
+      splitAt = remaining.lastIndexOf(" ", maxLength);
+    }
+
+    // Absolute last resort: hard cut
+    if (splitAt <= 0) {
+      splitAt = maxLength;
+    }
+
+    chunks.push(remaining.slice(0, splitAt).trim());
+    remaining = remaining.slice(splitAt).trim();
+  }
+
+  return chunks;
+}
+
 interface MetaApiOptions {
   accessToken: string;
 }
@@ -33,32 +82,43 @@ export async function sendMessage({
   // when using a page token derived from an OAuth user token
   const endpoint = `${GRAPH_API_BASE}/me/messages`;
 
-  // Instagram has a 1000 character limit for DMs
-  const truncatedMessage = message.length > 1000
-    ? message.slice(0, 997) + "..."
-    : message;
+  // Instagram has a 1000 character limit per message.
+  // Split long messages into multiple sends at natural break points.
+  const chunks = splitMessage(message, 950);
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message: { text: truncatedMessage },
-    }),
-  });
+  let lastMessageId = "";
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Meta API error: ${error.error?.message || response.statusText}`
-    );
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) {
+      // Small delay between chunks so they arrive in order
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message: { text: chunks[i] },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(
+        `Meta API error: ${error.error?.message || response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    lastMessageId = data.message_id;
+    console.log(`[meta-client] Sent chunk ${i + 1}/${chunks.length}, id:`, lastMessageId);
   }
 
-  const data = await response.json();
-  return { messageId: data.message_id };
+  return { messageId: lastMessageId };
 }
 
 /**

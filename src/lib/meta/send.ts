@@ -2,6 +2,38 @@ import { createAdminClient } from "@/lib/supabase/server";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 
+/**
+ * Split a long message into chunks that fit within a character limit.
+ * Splits at paragraph breaks first, then sentence breaks, then word breaks.
+ */
+function splitMessageChunks(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    let splitAt = remaining.lastIndexOf("\n\n", maxLength);
+    if (splitAt <= 0) splitAt = remaining.lastIndexOf("\n", maxLength);
+    if (splitAt <= 0) {
+      const sentenceMatch = remaining.slice(0, maxLength).match(/[\s\S]*[.!?]\s/);
+      if (sentenceMatch) splitAt = sentenceMatch[0].length;
+    }
+    if (splitAt <= 0) splitAt = remaining.lastIndexOf(" ", maxLength);
+    if (splitAt <= 0) splitAt = maxLength;
+
+    chunks.push(remaining.slice(0, splitAt).trim());
+    remaining = remaining.slice(splitAt).trim();
+  }
+
+  return chunks;
+}
+
 function getPageToken(): string {
   const token = process.env.FB_PAGE_ACCESS_TOKEN;
   if (!token) throw new Error("FB_PAGE_ACCESS_TOKEN not configured");
@@ -47,28 +79,40 @@ export async function sendFacebookDM(
 
   console.log("[meta-send] Sending DM to:", recipientId, "platform:", options?.platform);
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message: { text: message },
-    }),
-  });
+  // Split long messages into chunks (Instagram has 1000 char limit)
+  const chunks = splitMessageChunks(message, 950);
+  let lastMessageId = "";
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    const errMsg = (error as Record<string, Record<string, string>>).error?.message || response.statusText;
-    console.error("[meta-send] DM send failed:", errMsg, "endpoint:", endpoint);
-    throw new Error(`DM send failed: ${errMsg}`);
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message: { text: chunks[i] },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const errMsg = (error as Record<string, Record<string, string>>).error?.message || response.statusText;
+      console.error("[meta-send] DM send failed:", errMsg);
+      throw new Error(`DM send failed: ${errMsg}`);
+    }
+
+    const data = await response.json();
+    lastMessageId = data.message_id;
+    console.log(`[meta-send] Sent chunk ${i + 1}/${chunks.length}, id:`, lastMessageId);
   }
 
-  const data = await response.json();
-  console.log("[meta-send] DM sent, message_id:", data.message_id);
-  return data.message_id;
+  return lastMessageId;
 }
 
 /**

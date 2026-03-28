@@ -94,7 +94,7 @@ export async function generateClaudeReply(params: {
   // Add context about the channel so Claude adapts tone
   const channelContext = params.isComment
     ? "\n\nThis message is from a Facebook post comment. Keep the response concise and helpful for a public audience."
-    : "\n\nThis message is from a social media DM (Facebook Messenger or Instagram). Be friendly, helpful, and conversational. IMPORTANT: Keep your reply under 900 characters total — Instagram has a strict 1000 character limit for DMs.";
+    : "\n\nThis message is from a social media DM (Facebook Messenger or Instagram). Be friendly, helpful, and conversational.";
 
   // Ask Claude to classify the customer's sentiment
   const classificationInstruction = `
