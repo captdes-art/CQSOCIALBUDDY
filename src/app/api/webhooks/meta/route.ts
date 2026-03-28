@@ -98,8 +98,14 @@ export async function POST(request: NextRequest) {
     const messagingEvents = entry.messaging || [];
 
     for (const event of messagingEvents) {
-      console.log("[webhook] DM event from:", event.sender.id, "text:", event.message?.text?.slice(0, 50));
+      console.log("[webhook] DM event from:", event.sender.id, "text:", event.message?.text?.slice(0, 50), "is_echo:", event.message?.is_echo);
       if (!event.message?.text) continue;
+
+      // Skip echo messages (our own outbound replies echoed back by Meta)
+      if (event.message.is_echo) {
+        console.log("[webhook] Skipping echo message from:", event.sender.id);
+        continue;
+      }
 
       dmTasks.push(
         processIncomingMessage({

@@ -246,7 +246,8 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
     try {
       const sentMessageId = await sendFacebookDM(
         params.senderId,
-        draftContent
+        draftContent,
+        { platform: params.platform, pageId: params.recipientId }
       );
       console.log("[processor:dm] Auto-sent DM reply:", sentMessageId);
 

@@ -7,17 +7,25 @@ function getPageToken(): string {
 }
 
 /**
- * Send a DM via Facebook Messenger using the page access token.
+ * Send a DM via Facebook Messenger or Instagram using the page access token.
+ * Instagram DMs use /{page-or-ig-id}/messages, Facebook uses /me/messages.
  */
 export async function sendFacebookDM(
   recipientId: string,
-  message: string
+  message: string,
+  options?: { platform?: string; pageId?: string }
 ): Promise<string> {
   const token = getPageToken();
+  const isInstagram = options?.platform === "instagram_dm";
 
-  console.log("[meta-send] Sending DM to:", recipientId);
+  // Instagram DMs require the Instagram-scoped page ID as the endpoint
+  const endpoint = isInstagram && options?.pageId
+    ? `${GRAPH_API_BASE}/${options.pageId}/messages`
+    : `${GRAPH_API_BASE}/me/messages`;
 
-  const response = await fetch(`${GRAPH_API_BASE}/me/messages`, {
+  console.log("[meta-send] Sending DM to:", recipientId, "via:", endpoint);
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -32,7 +40,7 @@ export async function sendFacebookDM(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(
-      `FB DM send failed: ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
+      `DM send failed: ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
     );
   }
 
