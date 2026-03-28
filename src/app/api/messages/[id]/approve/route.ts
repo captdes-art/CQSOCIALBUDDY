@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 import { sendReply } from "@/lib/meta/messages";
 
 /**
@@ -12,18 +12,18 @@ export async function POST(
 ) {
   try {
     const { id: conversationId } = await params;
-    const supabase = await createClient();
     const admin = createAdminClient();
     const body = await request.json();
 
-    // Get current user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // Get user ID from the first admin profile (single-user app)
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("role", "admin")
+      .limit(1)
+      .single();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const userId = profile?.id || "system";
 
     const { draftId, content } = body;
 
@@ -37,7 +37,7 @@ export async function POST(
         conversationId,
         draftId: "manual",
         content,
-        approvedBy: user.id,
+        approvedBy: userId,
       });
 
       if (!result.success) {
@@ -74,7 +74,7 @@ export async function POST(
       conversationId,
       draftId,
       content: replyContent,
-      approvedBy: user.id,
+      approvedBy: userId,
     });
 
     if (!result.success) {
