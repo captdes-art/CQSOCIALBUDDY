@@ -33,20 +33,11 @@ export async function GET(request: NextRequest) {
 
     // 1. Exchange code for short-lived token
     const { accessToken: shortToken } = await exchangeCodeForToken(code, redirectUri);
-    console.log("[oauth] Step 2: Got short token, exchanging for long-lived");
+    console.log("[oauth] Step 2: Got short token");
 
-    // 2. Exchange for long-lived user token
-    const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken(
-      shortToken, process.env.META_APP_ID!, process.env.META_APP_SECRET!
-    );
-    const tokenExpiry = expiresIn
-      ? new Date(Date.now() + expiresIn * 1000).toISOString()
-      : null;
-    console.log("[oauth] Step 3: Got long-lived token, expiresIn:", expiresIn);
-
-    // 3. Get pages the user manages using the long-lived user token
+    // 2. Fetch pages using the short-lived token (most reliable — fresh from OAuth)
     const pagesRes = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${longToken}`
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${shortToken}`
     );
     if (!pagesRes.ok) {
       const pagesErr = await pagesRes.json().catch(() => ({}));
@@ -55,14 +46,32 @@ export async function GET(request: NextRequest) {
 
     const pagesData = await pagesRes.json();
     const pages = pagesData.data || [];
+    console.log("[oauth] Step 3: Found", pages.length, "pages");
     if (pages.length === 0) {
       return redirectError("No Facebook Pages found. Make sure your account manages at least one Page.");
     }
 
     // Use the first page (most users have one page connected)
     const pageData = pages[0];
+    // The page access token from /me/accounts is already a long-lived page token
     const pageToken = pageData.access_token;
     console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);
+
+    // 3. Exchange user token for long-lived (for token refresh later)
+    let longToken = shortToken;
+    let tokenExpiry: string | null = null;
+    try {
+      const longResult = await exchangeForLongLivedToken(
+        shortToken, process.env.META_APP_ID!, process.env.META_APP_SECRET!
+      );
+      longToken = longResult.accessToken;
+      tokenExpiry = longResult.expiresIn
+        ? new Date(Date.now() + longResult.expiresIn * 1000).toISOString()
+        : null;
+      console.log("[oauth] Step 5: Got long-lived user token, expiresIn:", longResult.expiresIn);
+    } catch (e) {
+      console.warn("[oauth] Long-lived token exchange failed (non-fatal), using short token:", e);
+    }
 
     // 4. Store in database
     const admin = createAdminClient();
