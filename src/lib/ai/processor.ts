@@ -231,7 +231,6 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
       automation_mode: mode,
     },
     ...(doAutoSend && {
-      approved_by: "auto",
       approved_at: new Date().toISOString(),
       sent_at: new Date().toISOString(),
     }),
