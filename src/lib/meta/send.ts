@@ -1,3 +1,5 @@
+import { createAdminClient } from "@/lib/supabase/server";
+
 const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 
 function getPageToken(): string {
@@ -7,23 +9,45 @@ function getPageToken(): string {
 }
 
 /**
- * Send a DM via Facebook Messenger or Instagram using the page access token.
- * Instagram DMs use /{page-or-ig-id}/messages, Facebook uses /me/messages.
+ * Get the access token for a platform from the database.
+ * Falls back to FB_PAGE_ACCESS_TOKEN env var.
+ */
+async function getTokenForPlatform(platform: string): Promise<string> {
+  const dbPlatform = platform === "instagram_dm" ? "instagram" : "facebook";
+  const supabase = createAdminClient();
+
+  const { data } = await supabase
+    .from("platform_accounts")
+    .select("access_token")
+    .eq("platform", dbPlatform)
+    .eq("is_active", true)
+    .single();
+
+  if (data?.access_token) return data.access_token;
+
+  // Fallback to env var
+  return getPageToken();
+}
+
+/**
+ * Send a DM via Facebook Messenger or Instagram.
+ * Instagram DMs use /{ig-account-id}/messages with the DB token.
+ * Facebook uses /me/messages with the page token.
  */
 export async function sendFacebookDM(
   recipientId: string,
   message: string,
   options?: { platform?: string; pageId?: string }
 ): Promise<string> {
-  const token = getPageToken();
   const isInstagram = options?.platform === "instagram_dm";
+  const token = await getTokenForPlatform(options?.platform || "facebook_messenger");
 
-  // Instagram DMs require the Instagram-scoped page ID as the endpoint
+  // Instagram DMs require the Instagram Business Account ID as the endpoint
   const endpoint = isInstagram && options?.pageId
     ? `${GRAPH_API_BASE}/${options.pageId}/messages`
     : `${GRAPH_API_BASE}/me/messages`;
 
-  console.log("[meta-send] Sending DM to:", recipientId, "via:", endpoint);
+  console.log("[meta-send] Sending DM to:", recipientId, "platform:", options?.platform, "via:", endpoint);
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -39,9 +63,9 @@ export async function sendFacebookDM(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(
-      `DM send failed: ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
-    );
+    const errMsg = (error as Record<string, Record<string, string>>).error?.message || response.statusText;
+    console.error("[meta-send] DM send failed:", errMsg, "endpoint:", endpoint);
+    throw new Error(`DM send failed: ${errMsg}`);
   }
 
   const data = await response.json();
