@@ -85,41 +85,48 @@ export async function sendReply(params: {
       return { success: false, error: `No active ${metaPlatform} account configured` };
     }
 
-    if (isComment) {
-      // For comments, find the most recent inbound comment ID to reply to
-      const { data: lastInboundMsg } = await supabase
-        .from("messages")
-        .select("platform_message_id")
-        .eq("conversation_id", params.conversationId)
-        .eq("direction", "inbound")
-        .order("sent_at", { ascending: false })
-        .limit(1)
-        .single();
+    try {
+      if (isComment) {
+        // For comments, find the most recent inbound comment ID to reply to
+        const { data: lastInboundMsg } = await supabase
+          .from("messages")
+          .select("platform_message_id")
+          .eq("conversation_id", params.conversationId)
+          .eq("direction", "inbound")
+          .order("sent_at", { ascending: false })
+          .limit(1)
+          .single();
 
-      const commentIdToReply = lastInboundMsg?.platform_message_id;
+        const commentIdToReply = lastInboundMsg?.platform_message_id;
 
-      if (!commentIdToReply) {
-        return { success: false, error: "No comment found to reply to" };
+        if (!commentIdToReply) {
+          return { success: false, error: "No comment found to reply to" };
+        }
+
+        // Reply to the comment on the post
+        const result = await replyToComment({
+          commentId: commentIdToReply,
+          message: params.content,
+          accessToken: account.access_token,
+          platform: metaPlatform,
+        });
+        messageId = result.commentId;
+      } else {
+        // Send as DM
+        console.log("[messages] Sending DM to:", conversation.customer_platform_id, "platform:", metaPlatform, "token starts:", account.access_token.slice(0, 20));
+        const result = await sendMessage({
+          recipientId: conversation.customer_platform_id,
+          message: params.content,
+          accessToken: account.access_token,
+          pageId: account.platform_account_id,
+          platform: metaPlatform,
+        });
+        messageId = result.messageId;
       }
-
-      // Reply to the comment on the post
-      const result = await replyToComment({
-        commentId: commentIdToReply,
-        message: params.content,
-        accessToken: account.access_token,
-        platform: metaPlatform,
-      });
-      messageId = result.commentId;
-    } else {
-      // Send as DM
-      const result = await sendMessage({
-        recipientId: conversation.customer_platform_id,
-        message: params.content,
-        accessToken: account.access_token,
-        pageId: account.platform_account_id,
-        platform: metaPlatform,
-      });
-      messageId = result.messageId;
+    } catch (sendError) {
+      const errMsg = sendError instanceof Error ? sendError.message : "Send failed";
+      console.error("[messages] Send failed:", errMsg);
+      return { success: false, error: errMsg };
     }
   }
 
