@@ -29,12 +29,9 @@ export async function sendMessage({
   pageId,
   platform,
 }: SendMessageParams): Promise<{ messageId: string }> {
-  // Facebook Messenger: POST /me/messages
-  // Instagram: POST /{page-id}/messages
-  const endpoint =
-    platform === "facebook"
-      ? `${GRAPH_API_BASE}/me/messages`
-      : `${GRAPH_API_BASE}/${pageId}/messages`;
+  // Always use /me/messages — works for both Facebook Messenger and Instagram DMs
+  // when using a page token derived from an OAuth user token
+  const endpoint = `${GRAPH_API_BASE}/me/messages`;
 
   const response = await fetch(endpoint, {
     method: "POST",
