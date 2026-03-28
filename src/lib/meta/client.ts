@@ -33,6 +33,11 @@ export async function sendMessage({
   // when using a page token derived from an OAuth user token
   const endpoint = `${GRAPH_API_BASE}/me/messages`;
 
+  // Instagram has a 1000 character limit for DMs
+  const truncatedMessage = message.length > 1000
+    ? message.slice(0, 997) + "..."
+    : message;
+
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -41,7 +46,7 @@ export async function sendMessage({
     },
     body: JSON.stringify({
       recipient: { id: recipientId },
-      message: { text: message },
+      message: { text: truncatedMessage },
     }),
   });
 
