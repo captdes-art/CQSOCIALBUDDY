@@ -90,6 +90,27 @@ export async function GET(request: NextRequest) {
 
       pageData = await pageRes.json();
       pageToken = staticToken;
+
+      // Try to derive a proper page token from the user token
+      // This token will have Instagram messaging permissions
+      const pageId = pageData.id;
+      for (const uToken of [longToken, shortToken]) {
+        try {
+          const ptRes = await fetch(
+            `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${uToken}`
+          );
+          if (ptRes.ok) {
+            const ptData = await ptRes.json();
+            if (ptData.access_token) {
+              console.log("[oauth] Derived page token from user token for page:", pageId);
+              pageToken = ptData.access_token;
+              break;
+            }
+          }
+        } catch {
+          // Continue to next token
+        }
+      }
     }
 
     console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);

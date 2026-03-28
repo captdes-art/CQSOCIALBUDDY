@@ -39,15 +39,13 @@ export async function sendFacebookDM(
   message: string,
   options?: { platform?: string; pageId?: string }
 ): Promise<string> {
-  const isInstagram = options?.platform === "instagram_dm";
   const token = await getTokenForPlatform(options?.platform || "facebook_messenger");
 
-  // Instagram DMs require the Instagram Business Account ID as the endpoint
-  const endpoint = isInstagram && options?.pageId
-    ? `${GRAPH_API_BASE}/${options.pageId}/messages`
-    : `${GRAPH_API_BASE}/me/messages`;
+  // Always use /me/messages — works for both Facebook Messenger and Instagram DMs
+  // when using a page token derived from an OAuth user token with instagram_manage_messages
+  const endpoint = `${GRAPH_API_BASE}/me/messages`;
 
-  console.log("[meta-send] Sending DM to:", recipientId, "platform:", options?.platform, "via:", endpoint);
+  console.log("[meta-send] Sending DM to:", recipientId, "platform:", options?.platform);
 
   const response = await fetch(endpoint, {
     method: "POST",
