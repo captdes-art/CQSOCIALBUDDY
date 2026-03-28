@@ -10,42 +10,82 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id: conversationId } = await params;
-  const supabase = await createClient();
-  const body = await request.json();
+  try {
+    const { id: conversationId } = await params;
+    const supabase = await createClient();
+    const body = await request.json();
 
-  // Get current user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Check role
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || profile.role === "viewer") {
-    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
-  }
-
-  const { draftId, content } = body;
-
-  // Manual reply — no draft needed, just send the content directly
-  if (!draftId || draftId === "manual") {
-    if (!content?.trim()) {
-      return NextResponse.json({ error: "Reply content is required" }, { status: 400 });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Check role — use admin client since profiles may have RLS
+    const { createAdminClient } = await import("@/lib/supabase/server");
+    const admin = createAdminClient();
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile || profile.role === "viewer") {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
+    const { draftId, content } = body;
+
+    // Manual reply — no draft needed, just send the content directly
+    if (!draftId || draftId === "manual") {
+      if (!content?.trim()) {
+        return NextResponse.json({ error: "Reply content is required" }, { status: 400 });
+      }
+
+      const result = await sendReply({
+        conversationId,
+        draftId: "manual",
+        content,
+        approvedBy: user.id,
+      });
+
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    // Draft-based reply — look up the draft
+    const { data: draft } = await admin
+      .from("ai_drafts")
+      .select("*")
+      .eq("id", draftId)
+      .single();
+
+    if (!draft) {
+      return NextResponse.json({ error: "Draft not found" }, { status: 404 });
+    }
+
+    // Use edited content if provided, otherwise use the original draft
+    const replyContent = content || draft.edited_content || draft.draft_content;
+
+    // If content was edited, save it
+    if (content && content !== draft.draft_content) {
+      await admin
+        .from("ai_drafts")
+        .update({ edited_content: content })
+        .eq("id", draftId);
+    }
+
+    // Send the reply via Meta API
     const result = await sendReply({
       conversationId,
-      draftId: "manual",
-      content,
+      draftId,
+      content: replyContent,
       approvedBy: user.id,
     });
 
@@ -54,41 +94,9 @@ export async function POST(
     }
 
     return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[approve] Unhandled error:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // Draft-based reply — look up the draft
-  const { data: draft } = await supabase
-    .from("ai_drafts")
-    .select("*")
-    .eq("id", draftId)
-    .single();
-
-  if (!draft) {
-    return NextResponse.json({ error: "Draft not found" }, { status: 404 });
-  }
-
-  // Use edited content if provided, otherwise use the original draft
-  const replyContent = content || draft.edited_content || draft.draft_content;
-
-  // If content was edited, save it
-  if (content && content !== draft.draft_content) {
-    await supabase
-      .from("ai_drafts")
-      .update({ edited_content: content })
-      .eq("id", draftId);
-  }
-
-  // Send the reply via Meta API
-  const result = await sendReply({
-    conversationId,
-    draftId,
-    content: replyContent,
-    approvedBy: user.id,
-  });
-
-  if (!result.success) {
-    return NextResponse.json({ error: result.error }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }
