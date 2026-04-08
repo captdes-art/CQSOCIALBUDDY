@@ -3,6 +3,7 @@ const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 const REQUIRED_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
+  "pages_read_user_content",
   "pages_manage_metadata",
   "pages_manage_engagement",
   "pages_messaging",
