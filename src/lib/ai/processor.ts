@@ -471,11 +471,14 @@ async function processComment(params: IncomingMessageParams): Promise<void> {
     settings.comment_delay_max_seconds * 1000
   );
 
-  // Post public comment reply using the configurable text
-  const publicReply = settings.comment_public_reply_text;
+  // Post public comment reply
+  // For Facebook: short teaser + private DM with full answer
+  // For Instagram: full answer as public reply (no private reply API)
+  const isIg = params.platform === "instagram_dm";
+  const publicReply = isIg ? fullAnswer : settings.comment_public_reply_text;
 
   try {
-    const replyId = await replyToFacebookComment(commentId, publicReply);
+    const replyId = await replyToFacebookComment(commentId, publicReply, { platform: params.platform });
     console.log("[processor:comment] Public reply posted:", replyId);
 
     await supabase.from("messages").insert({
@@ -491,22 +494,27 @@ async function processComment(params: IncomingMessageParams): Promise<void> {
     console.error("[processor:comment] Public reply failed:", err);
   }
 
-  // Send private DM with full Claude answer
-  try {
-    const dmId = await sendPrivateReply(commentId, fullAnswer);
-    console.log("[processor:comment] Private DM sent:", dmId);
+  // Send private DM with full Claude answer (Facebook only — Instagram doesn't support private replies)
+  const isInstagram = params.platform === "instagram_dm";
+  if (!isInstagram) {
+    try {
+      const dmId = await sendPrivateReply(commentId, fullAnswer, { platform: params.platform });
+      console.log("[processor:comment] Private DM sent:", dmId);
 
-    await supabase.from("messages").insert({
-      conversation_id: dbConversationId,
-      platform_message_id: dmId,
-      direction: "outbound",
-      content: fullAnswer,
-      content_type: "text",
-      sender_name: "Celtic Quest AI",
-      sent_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("[processor:comment] Private DM failed:", err);
+      await supabase.from("messages").insert({
+        conversation_id: dbConversationId,
+        platform_message_id: dmId,
+        direction: "outbound",
+        content: fullAnswer,
+        content_type: "text",
+        sender_name: "Celtic Quest AI",
+        sent_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[processor:comment] Private DM failed:", err);
+    }
+  } else {
+    console.log("[processor:comment] Skipping private reply for Instagram (not supported)");
   }
 
   // Update conversation status
@@ -524,8 +532,9 @@ async function processComment(params: IncomingMessageParams): Promise<void> {
     action: "reply_sent",
     metadata: {
       type: "comment_auto_reply",
+      platform: params.platform,
       has_public_reply: true,
-      has_private_dm: true,
+      has_private_dm: !isInstagram,
     },
   });
 }

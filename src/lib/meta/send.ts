@@ -116,29 +116,39 @@ export async function sendFacebookDM(
 }
 
 /**
- * Reply publicly to a Facebook comment.
+ * Reply publicly to a comment (Facebook or Instagram).
+ * Facebook: POST /{comment_id}/comments
+ * Instagram: POST /{comment_id}/replies
  */
 export async function replyToFacebookComment(
   commentId: string,
-  message: string
+  message: string,
+  options?: { platform?: string }
 ): Promise<string> {
-  const token = getPageToken();
+  const platform = options?.platform || "facebook_messenger";
+  const token = await getTokenForPlatform(platform);
+  const isInstagram = platform === "instagram_dm";
 
-  console.log("[meta-send] Replying to comment:", commentId);
+  // Instagram uses /replies, Facebook uses /comments
+  const endpoint = isInstagram
+    ? `${GRAPH_API_BASE}/${commentId}/replies`
+    : `${GRAPH_API_BASE}/${commentId}/comments`;
 
-  const response = await fetch(
-    `${GRAPH_API_BASE}/${commentId}/comments?access_token=${token}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
-    }
-  );
+  console.log("[meta-send] Replying to comment:", commentId, "platform:", platform);
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ message }),
+  });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(
-      `FB comment reply failed: ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
+      `Comment reply failed: ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
     );
   }
 
@@ -151,12 +161,14 @@ export async function replyToFacebookComment(
  * Send a private reply (one-time DM) to someone who commented on a post.
  * Uses the Facebook Private Replies API.
  * Note: Only one private reply allowed per comment, within 7 days.
+ * Note: Private replies are only available for Facebook, not Instagram.
  */
 export async function sendPrivateReply(
   commentId: string,
-  message: string
+  message: string,
+  options?: { platform?: string }
 ): Promise<string> {
-  const token = getPageToken();
+  const token = await getTokenForPlatform(options?.platform || "facebook_messenger");
 
   console.log("[meta-send] Sending private reply for comment:", commentId);
 
