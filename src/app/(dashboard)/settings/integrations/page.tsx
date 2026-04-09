@@ -56,18 +56,9 @@ export default function IntegrationsPage() {
       return;
     }
     const redirectUri = `${window.location.origin}/api/meta/auth/callback`;
-    const scopes = [
-      "pages_show_list",
-      "pages_read_engagement",
-      "pages_read_user_content",
-      "pages_manage_metadata",
-      "pages_manage_engagement",
-      "pages_messaging",
-      "instagram_basic",
-      "instagram_manage_messages",
-    ].join(",");
+    const configId = "801906359657326";
 
-    window.location.href = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&response_type=code`;
+    window.location.href = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&response_type=code&override_default_response_type=true`;
   }
 
   async function handleDisconnect() {
