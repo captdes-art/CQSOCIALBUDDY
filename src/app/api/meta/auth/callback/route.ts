@@ -57,12 +57,14 @@ export async function GET(request: NextRequest) {
     let pageToken: string | null = null;
 
     for (const token of [shortToken, longToken]) {
+      console.log("[oauth] Trying /me/accounts with token:", token.substring(0, 20) + "...");
       const pagesRes = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${token}`
       );
+      const pagesBody = await pagesRes.json();
+      console.log("[oauth] /me/accounts response:", JSON.stringify(pagesBody).substring(0, 500));
       if (pagesRes.ok) {
-        const pagesData = await pagesRes.json();
-        const pages = pagesData.data || [];
+        const pages = pagesBody.data || [];
         console.log("[oauth] /me/accounts returned", pages.length, "pages");
         if (pages.length > 0) {
           pageData = pages[0];
@@ -72,12 +74,40 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4. Fallback: use FB_PAGE_ACCESS_TOKEN to fetch page info directly
+    // 4. Fallback: derive page token from user token using known page ID
     if (!pageData) {
-      console.log("[oauth] /me/accounts returned no pages, falling back to FB_PAGE_ACCESS_TOKEN");
+      console.log("[oauth] /me/accounts returned no pages, trying direct page ID lookup");
+      const knownPageId = "101274736607035";
+      for (const uToken of [longToken, shortToken]) {
+        try {
+          const ptRes = await fetch(
+            `https://graph.facebook.com/v21.0/${knownPageId}?fields=id,name,access_token,instagram_business_account{id,username,name,biography,followers_count}&access_token=${uToken}`
+          );
+          if (ptRes.ok) {
+            const ptData = await ptRes.json();
+            console.log("[oauth] Direct page lookup result:", JSON.stringify(ptData).substring(0, 300));
+            if (ptData.access_token) {
+              pageData = ptData;
+              pageToken = ptData.access_token;
+              console.log("[oauth] Got page token via direct lookup for:", ptData.name);
+              break;
+            }
+          } else {
+            const errData = await ptRes.json().catch(() => ({}));
+            console.log("[oauth] Direct page lookup failed:", JSON.stringify(errData).substring(0, 300));
+          }
+        } catch (e) {
+          console.log("[oauth] Direct page lookup error:", e);
+        }
+      }
+    }
+
+    // 5. Last resort: use FB_PAGE_ACCESS_TOKEN env var
+    if (!pageData) {
+      console.log("[oauth] All token approaches failed, trying FB_PAGE_ACCESS_TOKEN env var");
       const staticToken = process.env.FB_PAGE_ACCESS_TOKEN;
       if (!staticToken) {
-        return redirectError("Could not find Facebook Pages. FB_PAGE_ACCESS_TOKEN is also not configured as fallback.");
+        return redirectError("Could not find Facebook Pages. Grant pages_show_list permission and try again.");
       }
 
       const pageRes = await fetch(
@@ -90,27 +120,6 @@ export async function GET(request: NextRequest) {
 
       pageData = await pageRes.json();
       pageToken = staticToken;
-
-      // Try to derive a proper page token from the user token
-      // This token will have Instagram messaging permissions
-      const pageId = pageData.id;
-      for (const uToken of [longToken, shortToken]) {
-        try {
-          const ptRes = await fetch(
-            `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${uToken}`
-          );
-          if (ptRes.ok) {
-            const ptData = await ptRes.json();
-            if (ptData.access_token) {
-              console.log("[oauth] Derived page token from user token for page:", pageId);
-              pageToken = ptData.access_token;
-              break;
-            }
-          }
-        } catch {
-          // Continue to next token
-        }
-      }
     }
 
     console.log("[oauth] Step 4: Page:", pageData.name, "ID:", pageData.id);
