@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Instagram,
   Webhook,
+  Archive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,6 +25,7 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Inbox", href: "/inbox", icon: Inbox, showBadge: true },
   { name: "Flagged", href: "/flagged", icon: AlertTriangle },
+  { name: "Archived", href: "/archived", icon: Archive },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Engagement", href: "/engagement", icon: TrendingUp },
   { name: "Instagram", href: "/instagram", icon: Instagram },

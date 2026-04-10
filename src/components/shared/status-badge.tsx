@@ -12,6 +12,7 @@ const statusConfig: Record<
   sent: { label: "Sent", variant: "outline" },
   flagged: { label: "Flagged", variant: "destructive" },
   ignored: { label: "Ignored", variant: "outline" },
+  archived: { label: "Archived", variant: "outline" },
 };
 
 interface StatusBadgeProps {

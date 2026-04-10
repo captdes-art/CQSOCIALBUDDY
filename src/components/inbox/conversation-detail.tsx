@@ -1,15 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import { usePlatformAccounts } from "@/hooks/use-platform-accounts";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Archive, ArchiveRestore, Trash2, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PlatformBadge } from "@/components/shared/platform-badge";
 import { MessageBubble } from "./message-bubble";
 import { DraftPanel } from "./draft-panel";
+import { toast } from "sonner";
 import type { Conversation } from "@/types";
 
 interface ConversationDetailProps {
@@ -24,6 +41,8 @@ export function ConversationDetail({
   const { data, isLoading } = useMessages(conversation.id);
   const { data: accounts } = usePlatformAccounts();
   const queryClient = useQueryClient();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Find the connected account for this conversation's platform
   const isFacebook = conversation.platform === "facebook_messenger";
@@ -38,9 +57,49 @@ export function ConversationDetail({
     .slice(0, 2)
     .toUpperCase();
 
+  const isArchived = conversation.status === "archived";
+
   function handleAction() {
     queryClient.invalidateQueries({ queryKey: ["messages", conversation.id] });
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  }
+
+  async function handleArchive() {
+    setActionLoading(true);
+    try {
+      const action = isArchived ? "unarchive" : "archive";
+      const res = await fetch(`/api/conversations/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) throw new Error("Failed to " + action);
+      toast.success(isArchived ? "Conversation restored" : "Conversation archived");
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      onBack();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/conversations/${conversation.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete conversation");
+      toast.success("Conversation permanently deleted");
+      setShowDeleteDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      onBack();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   return (
@@ -73,7 +132,71 @@ export function ConversationDetail({
             )}
           </p>
         </div>
+
+        {/* Archive / Delete dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="shrink-0">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleArchive} disabled={actionLoading}>
+              {isArchived ? (
+                <>
+                  <ArchiveRestore className="h-4 w-4 mr-2" />
+                  Restore from Archive
+                </>
+              ) : (
+                <>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive Conversation
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setShowDeleteDialog(true)}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Permanently
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Conversation</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this conversation with{" "}
+              <strong>{conversation.customer_name || "Unknown"}</strong>,
+              including all messages, AI drafts, and activity logs.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={actionLoading}
+            >
+              {actionLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-4">

@@ -7,7 +7,8 @@ export type ConversationStatus =
   | "approved"
   | "sent"
   | "flagged"
-  | "ignored";
+  | "ignored"
+  | "archived";
 
 export type Classification =
   | "booking"

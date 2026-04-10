@@ -19,7 +19,12 @@ export async function GET(request: NextRequest) {
   if (platform) query = query.eq("platform", platform);
 
   const status = searchParams.get("status");
-  if (status) query = query.eq("status", status);
+  if (status) {
+    query = query.eq("status", status);
+  } else {
+    // Exclude archived conversations by default unless explicitly requested
+    query = query.neq("status", "archived");
+  }
 
   const classification = searchParams.get("classification");
   if (classification) query = query.eq("classification", classification);

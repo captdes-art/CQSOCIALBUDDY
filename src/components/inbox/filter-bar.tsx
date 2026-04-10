@@ -68,6 +68,7 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
           <SelectItem value="flagged">Flagged</SelectItem>
           <SelectItem value="sent">Sent</SelectItem>
           <SelectItem value="ignored">Ignored</SelectItem>
+          <SelectItem value="archived">Archived</SelectItem>
         </SelectContent>
       </Select>
 
