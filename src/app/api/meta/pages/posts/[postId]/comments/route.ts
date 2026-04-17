@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/require-auth";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -13,6 +14,9 @@ export async function GET(
   { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth.response) return auth.response;
+
     const { postId } = await params;
     const admin = createAdminClient();
     const { data: account } = await admin
@@ -70,6 +74,9 @@ export async function POST(
   { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
+    const auth = await requireAuth();
+    if (auth.response) return auth.response;
+
     await params; // validate route param exists
     const admin = createAdminClient();
     const { commentId, message } = await request.json();
