@@ -164,21 +164,67 @@ export async function replyToComment({
 
 /**
  * Fetch a user's profile info from Meta.
+ *
+ * Instagram exposes the profile directly at /{USER_ID}. Facebook Messenger
+ * no longer does — we have to look the user up through /me/conversations,
+ * which returns participant names. We try the direct endpoint first and
+ * fall back to the conversations lookup when it fails.
  */
 export async function getUserProfile(
   userId: string,
   { accessToken }: MetaApiOptions
 ): Promise<UserProfileResult> {
-  const response = await fetch(
-    `${GRAPH_API_BASE}/${userId}?fields=id,name,profile_pic&access_token=${accessToken}`
-  );
-
-  if (!response.ok) {
-    // If profile fetch fails, return just the ID
-    return { id: userId };
+  // Direct profile endpoint — works for Instagram, usually fails for FB Messenger.
+  try {
+    const fields = "id,name,first_name,last_name,username,profile_pic";
+    const directRes = await fetch(
+      `${GRAPH_API_BASE}/${userId}?fields=${fields}&access_token=${accessToken}`
+    );
+    if (directRes.ok) {
+      const data = await directRes.json();
+      const name =
+        data.name ||
+        [data.first_name, data.last_name].filter(Boolean).join(" ").trim() ||
+        data.username ||
+        undefined;
+      if (name) {
+        return { id: data.id || userId, name, profile_pic: data.profile_pic };
+      }
+    }
+  } catch {
+    // fall through to conversations lookup
   }
 
-  return response.json();
+  // Fallback: find the user in the page's Messenger conversations.
+  try {
+    const convRes = await fetch(
+      `${GRAPH_API_BASE}/me/conversations?fields=participants&user_id=${userId}&access_token=${accessToken}`
+    );
+    if (convRes.ok) {
+      const data = await convRes.json();
+      const threads = (data.data as Array<{ participants?: { data?: Array<{ id: string; name?: string }> } }>) || [];
+      for (const thread of threads) {
+        const match = thread.participants?.data?.find((p) => p.id === userId);
+        if (match?.name) {
+          return { id: userId, name: match.name };
+        }
+      }
+    } else {
+      const errBody = await convRes.text().catch(() => "");
+      console.warn(
+        "[getUserProfile] Conversations lookup failed for userId:",
+        userId,
+        "status:",
+        convRes.status,
+        "body:",
+        errBody.slice(0, 200)
+      );
+    }
+  } catch (err) {
+    console.warn("[getUserProfile] Conversations lookup threw:", err);
+  }
+
+  return { id: userId };
 }
 
 /**
