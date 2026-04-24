@@ -133,22 +133,7 @@ export function ConversationDetail({
           </p>
         </div>
 
-        {/* Archive button */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleArchive}
-          disabled={actionLoading}
-          className="shrink-0"
-        >
-          {isArchived ? (
-            <><ArchiveRestore className="h-4 w-4 mr-1.5" /> Restore</>
-          ) : (
-            <><Archive className="h-4 w-4 mr-1.5" /> Archive</>
-          )}
-        </Button>
-
-        {/* Delete menu */}
+        {/* Archive / Delete dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="shrink-0">
@@ -156,6 +141,20 @@ export function ConversationDetail({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleArchive} disabled={actionLoading}>
+              {isArchived ? (
+                <>
+                  <ArchiveRestore className="h-4 w-4 mr-2" />
+                  Restore from Archive
+                </>
+              ) : (
+                <>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive Conversation
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setShowDeleteDialog(true)}
               className="text-destructive focus:text-destructive"
