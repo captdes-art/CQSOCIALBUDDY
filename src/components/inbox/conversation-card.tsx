@@ -34,7 +34,7 @@ export function ConversationCard({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 p-3 border-b cursor-pointer transition-colors hover:bg-muted/50",
+        "flex items-start gap-3 p-3 border-b cursor-pointer transition-colors hover:bg-muted/50 w-full min-w-0",
         isActive && "bg-muted",
         conversation.status === "new" && "border-l-2 border-l-primary"
       )}
@@ -61,11 +61,11 @@ export function ConversationCard({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm truncate">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span className="font-medium text-sm truncate min-w-0 flex-1">
             {conversation.customer_name || "Unknown"}
           </span>
-          <span className="text-xs text-muted-foreground shrink-0">
+          <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
             {formatDistanceToNow(new Date(conversation.last_message_at), {
               addSuffix: true,
             })}

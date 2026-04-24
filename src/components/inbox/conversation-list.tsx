@@ -1,6 +1,5 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConversationCard } from "./conversation-card";
 import { Loader2, Inbox } from "lucide-react";
 import type { Conversation } from "@/types";
@@ -43,7 +42,7 @@ export function ConversationList({
   }
 
   return (
-    <ScrollArea className="flex-1">
+    <div className="flex-1 overflow-y-auto min-w-0">
       {conversations.map((conversation) => (
         <ConversationCard
           key={conversation.id}
@@ -54,6 +53,6 @@ export function ConversationList({
           onClick={onClick}
         />
       ))}
-    </ScrollArea>
+    </div>
   );
 }
