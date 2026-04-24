@@ -102,6 +102,7 @@ export function FilterBar({ filters, onFiltersChange }: FilterBarProps) {
           size="sm"
           onClick={() =>
             onFiltersChange({
+              source_type: filters.source_type,
               sort_by: "last_message_at",
               sort_order: "desc",
             })

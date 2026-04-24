@@ -12,6 +12,7 @@ import type { ConversationFilters, Conversation } from "@/types";
 
 export default function InboxPage() {
   const [filters, setFilters] = useState<ConversationFilters>({
+    source_type: "dm",
     sort_by: "last_message_at",
     sort_order: "desc",
   });

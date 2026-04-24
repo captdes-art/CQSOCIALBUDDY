@@ -66,19 +66,24 @@ export function applyVariation(params: {
   classification: Classification;
   conversationId: string;
 }): string {
-  const { vapiAnswer, classification, conversationId } = params;
+  const { vapiAnswer, classification } = params;
 
   switch (classification) {
     case "compliment": {
-      const response = pickVariation(COMPLIMENT_RESPONSES, conversationId, "compliment");
-      const signOff = pickVariation(SIGN_OFFS, conversationId, "signoff");
+      // Use Claude's context-aware response so each reply references what the
+      // customer actually said. Fall back to canned variations only if Claude failed.
+      const signOff = pickVariation(SIGN_OFFS, "__global__", "signoff");
+      if (vapiAnswer?.trim()) {
+        return `${vapiAnswer}\n\n${signOff}`;
+      }
+      const response = pickVariation(COMPLIMENT_RESPONSES, "__global__", "compliment");
       return `${response}\n\n${signOff}`;
     }
 
     case "booking": {
       if (!vapiAnswer?.trim()) return "";
-      const greeting = pickVariation(GREETINGS, conversationId, "greeting");
-      const signOff = pickVariation(SIGN_OFFS, conversationId, "signoff");
+      const greeting = pickVariation(GREETINGS, "__global__", "greeting");
+      const signOff = pickVariation(SIGN_OFFS, "__global__", "signoff");
       return `${greeting} ${vapiAnswer}\n\n${signOff}`;
     }
 
@@ -86,8 +91,8 @@ export function applyVariation(params: {
       // If Claude didn't produce an answer (e.g. knowledge base fetch failed),
       // return empty so the message gets flagged for manual response
       if (!vapiAnswer?.trim()) return "";
-      const greeting = pickVariation(GREETINGS, conversationId, "greeting");
-      const signOff = pickVariation(SIGN_OFFS, conversationId, "signoff");
+      const greeting = pickVariation(GREETINGS, "__global__", "greeting");
+      const signOff = pickVariation(SIGN_OFFS, "__global__", "signoff");
       return `${greeting} ${vapiAnswer}\n\n${signOff}`;
     }
 

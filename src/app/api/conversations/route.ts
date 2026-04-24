@@ -11,8 +11,12 @@ export async function GET(request: NextRequest) {
   // Build query
   let query = supabase
     .from("conversations")
-    .select("*, assigned_profile:profiles!conversations_assigned_to_fkey(id, full_name, avatar_url)")
-    .eq("source_type", searchParams.get("source_type") || "dm");
+    .select("*, assigned_profile:profiles!conversations_assigned_to_fkey(id, full_name, avatar_url)");
+
+  // Filter by source_type only when explicitly provided. No default so that
+  // Flagged / Archived views surface both DMs and comments.
+  const sourceType = searchParams.get("source_type");
+  if (sourceType) query = query.eq("source_type", sourceType);
 
   // Filters
   const platform = searchParams.get("platform");
