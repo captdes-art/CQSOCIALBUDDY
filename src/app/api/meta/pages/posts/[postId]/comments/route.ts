@@ -46,13 +46,40 @@ export async function GET(
     }
 
     const data = await response.json();
-    const comments = (data.data || []).map((c: Record<string, unknown>) => ({
-      id: c.id,
-      message: c.message || "",
-      from: c.from as { name: string; id: string } | null,
-      created_time: c.created_time,
-      like_count: c.like_count || 0,
-    }));
+    const rawComments = (data.data || []) as Array<Record<string, unknown>>;
+
+    // Until pages_read_user_content is approved, Meta omits the `from` field
+    // on the GET /comments response. Fall back to the commenter name we
+    // captured from the feed webhook (stored as messages.sender_name with
+    // platform_message_id = comment_id).
+    const commentIds = rawComments.map((c) => c.id as string);
+    const idToName = new Map<string, string>();
+    if (commentIds.length) {
+      const { data: rows } = await admin
+        .from("messages")
+        .select("platform_message_id, sender_name")
+        .in("platform_message_id", commentIds);
+      for (const row of rows || []) {
+        if (row.sender_name) idToName.set(row.platform_message_id, row.sender_name);
+      }
+    }
+
+    const comments = rawComments.map((c) => {
+      const apiFrom = c.from as { name?: string; id?: string } | undefined;
+      const fallbackName = idToName.get(c.id as string);
+      const from = apiFrom?.name
+        ? { name: apiFrom.name, id: apiFrom.id || "" }
+        : fallbackName
+          ? { name: fallbackName, id: "" }
+          : null;
+      return {
+        id: c.id,
+        message: c.message || "",
+        from,
+        created_time: c.created_time,
+        like_count: c.like_count || 0,
+      };
+    });
 
     return NextResponse.json({ comments });
   } catch (err) {
