@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import { usePlatformAccounts } from "@/hooks/use-platform-accounts";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Archive, ArchiveRestore, Trash2, MoreVertical } from "lucide-react";
+import { ArrowLeft, Loader2, Archive, ArchiveRestore, Trash2, MoreVertical, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -197,6 +197,22 @@ export function ConversationDetail({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Comment context — which post this comment is on */}
+      {conversation.source_type === "comment" && conversation.source_post_id && (
+        <div className="px-4 py-2 border-b bg-muted/40 text-xs flex items-center gap-2">
+          <span className="text-muted-foreground">Comment on post</span>
+          <a
+            href={`https://www.facebook.com/${conversation.source_post_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-1 font-medium truncate"
+          >
+            View on Facebook
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      )}
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-4">

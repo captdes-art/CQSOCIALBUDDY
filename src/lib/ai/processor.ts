@@ -10,12 +10,7 @@ import {
   shouldAutoSend as checkAutoSend,
   shouldAutoDraft as checkAutoDraft,
 } from "@/lib/settings";
-import {
-  sendFacebookDM,
-  replyToFacebookComment,
-  sendPrivateReply,
-  randomDelay,
-} from "@/lib/meta/send";
+import { sendFacebookDM } from "@/lib/meta/send";
 import type { Platform } from "@/types";
 
 interface IncomingMessageParams {
@@ -444,97 +439,57 @@ async function processComment(params: IncomingMessageParams): Promise<void> {
     fullAnswer = claudeResult.answer;
   } catch (err) {
     console.error("[processor:comment] Claude API failed:", err);
+    // Save a pending draft anyway so the comment shows up for manual reply
+    // instead of disappearing into a flagged-with-nothing-to-do state.
+    await supabase.from("ai_drafts").insert({
+      conversation_id: dbConversationId,
+      message_id: storedMessage.id,
+      draft_content: "",
+      classification: "faq",
+      confidence_score: 0,
+      status: "pending",
+      vapi_response_raw: {
+        source: "claude-error",
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
     await supabase
       .from("conversations")
-      .update({ status: "flagged", classification: "faq" })
+      .update({ status: "draft_ready", classification: "faq" })
       .eq("id", dbConversationId);
     return;
   }
 
-  // Store the AI draft
+  // Store the AI draft as pending so the user can review and approve before
+  // anything posts to the public comment thread.
   await supabase.from("ai_drafts").insert({
     conversation_id: dbConversationId,
     message_id: storedMessage.id,
     draft_content: fullAnswer,
     classification: "faq",
     confidence_score: 0.85,
-    status: "sent",
+    status: "pending",
     vapi_response_raw: { source: "claude-sonnet", type: "comment-reply" },
-    approved_by: "auto",
-    approved_at: new Date().toISOString(),
-    sent_at: new Date().toISOString(),
   });
 
-  // Wait using the configured delay range from settings
-  await randomDelay(
-    settings.comment_delay_min_seconds * 1000,
-    settings.comment_delay_max_seconds * 1000
-  );
-
-  // Post public comment reply
-  // For Facebook: short teaser + private DM with full answer
-  // For Instagram: full answer as public reply (no private reply API)
-  const isIg = params.platform === "instagram_dm";
-  const publicReply = isIg ? fullAnswer : settings.comment_public_reply_text;
-
-  try {
-    const replyId = await replyToFacebookComment(commentId, publicReply, { platform: params.platform });
-    console.log("[processor:comment] Public reply posted:", replyId);
-
-    await supabase.from("messages").insert({
-      conversation_id: dbConversationId,
-      platform_message_id: replyId,
-      direction: "outbound",
-      content: publicReply,
-      content_type: "text",
-      sender_name: "Celtic Quest AI",
-      sent_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("[processor:comment] Public reply failed:", err);
-  }
-
-  // Send private DM with full Claude answer (Facebook only — Instagram doesn't support private replies)
-  const isInstagram = params.platform === "instagram_dm";
-  if (!isInstagram) {
-    try {
-      const dmId = await sendPrivateReply(commentId, fullAnswer, { platform: params.platform });
-      console.log("[processor:comment] Private DM sent:", dmId);
-
-      await supabase.from("messages").insert({
-        conversation_id: dbConversationId,
-        platform_message_id: dmId,
-        direction: "outbound",
-        content: fullAnswer,
-        content_type: "text",
-        sender_name: "Celtic Quest AI",
-        sent_at: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("[processor:comment] Private DM failed:", err);
-    }
-  } else {
-    console.log("[processor:comment] Skipping private reply for Instagram (not supported)");
-  }
-
-  // Update conversation status
+  // Park the comment in draft_ready so the human can review and approve.
+  // Approval routes through the standard /api/messages/[id]/approve flow,
+  // which already handles comment-source replies.
   await supabase
     .from("conversations")
     .update({
-      status: "sent",
+      status: "draft_ready",
       classification: "faq",
-      last_message_preview: publicReply,
+      last_message_preview: commentText.slice(0, 100),
     })
     .eq("id", dbConversationId);
 
   await supabase.from("activity_log").insert({
     conversation_id: dbConversationId,
-    action: "reply_sent",
+    action: "draft_generated",
     metadata: {
-      type: "comment_auto_reply",
+      type: "comment_draft_generated",
       platform: params.platform,
-      has_public_reply: true,
-      has_private_dm: !isInstagram,
     },
   });
 }
