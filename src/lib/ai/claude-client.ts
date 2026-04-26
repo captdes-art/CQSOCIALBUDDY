@@ -29,24 +29,49 @@ function getAuthHeader(): string {
  * The prompt template has a {context} placeholder that gets filled with the KB content.
  * Caches the assembled prompt for 10 minutes.
  */
+// Static fallback used when the Voice AI knowledge-base service is unreachable
+// (auth failure, service down, env var missing). Without this, the entire
+// auto-reply path silently fails and conversations end up flagged with no draft.
+const FALLBACK_SYSTEM_PROMPT = `You are the customer-service AI for Celtic Quest Fishing Fleet, a family-friendly fishing charter business based out of Port Jefferson and Jamesport, Long Island, NY.
+
+Tone: warm, friendly, nautical, helpful. Keep replies short and personable — usually 1-3 sentences for comments and short paragraphs for DMs. Never invent specific schedules, prices, or availability you do not know.
+
+When you don't know a specific fact (exact prices, exact dates, captain names, specific catch reports), say something like "let me check on that for you — please send us a DM or call 631-928-3926 / visit celticquestfishing.com" rather than guessing.
+
+Always be encouraging and inviting, sign off with something like "Tight lines!" or "Hope to see you on the water!" when natural.`;
+
 async function getSystemPrompt(): Promise<string> {
   if (cachedPrompt && Date.now() - cachedPrompt.fetchedAt < CACHE_TTL) {
     return cachedPrompt.text;
   }
 
-  const authHeader = getAuthHeader();
+  let authHeader: string | null = null;
+  try {
+    authHeader = getAuthHeader();
+  } catch (err) {
+    console.warn("[claude] KB auth header missing, using fallback prompt:", err);
+    return FALLBACK_SYSTEM_PROMPT;
+  }
 
   // Fetch prompt template and knowledge base content in parallel
   console.log("[claude] Fetching system prompt + knowledge base");
-  const [promptRes, kbRes] = await Promise.all([
-    fetch(PROMPT_URL, { headers: { Authorization: authHeader } }),
-    fetch(KB_URL, { headers: { Authorization: authHeader } }),
-  ]);
+  let promptRes: Response;
+  let kbRes: Response;
+  try {
+    [promptRes, kbRes] = await Promise.all([
+      fetch(PROMPT_URL, { headers: { Authorization: authHeader } }),
+      fetch(KB_URL, { headers: { Authorization: authHeader } }),
+    ]);
+  } catch (err) {
+    console.warn("[claude] KB fetch threw, using fallback prompt:", err);
+    return FALLBACK_SYSTEM_PROMPT;
+  }
 
   if (!promptRes.ok) {
-    throw new Error(
-      `Failed to fetch system prompt: ${promptRes.status} ${promptRes.statusText}`
+    console.warn(
+      `[claude] KB prompt request failed (${promptRes.status} ${promptRes.statusText}) — using fallback prompt so the AI can still draft a reply.`
     );
+    return FALLBACK_SYSTEM_PROMPT;
   }
 
   // Extract prompt template
