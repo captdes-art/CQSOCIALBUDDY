@@ -16,6 +16,7 @@ import {
   Instagram,
   Webhook,
   Archive,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,6 +25,7 @@ import { useStats } from "@/hooks/use-stats";
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Inbox", href: "/inbox", icon: Inbox, showBadge: true },
+  { name: "Comments", href: "/comments", icon: MessageCircle },
   { name: "Flagged", href: "/flagged", icon: AlertTriangle },
   { name: "Archived", href: "/archived", icon: Archive },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
