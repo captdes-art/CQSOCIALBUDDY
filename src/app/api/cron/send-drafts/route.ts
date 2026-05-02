@@ -30,8 +30,12 @@ export async function GET(request: NextRequest) {
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 
-  // Find pending drafts that should be auto-sent
-  // Exclude flagged conversations — those require explicit admin approval
+  // Find pending drafts that should be auto-sent.
+  // Safety nets (added 2026-05-02 after the 128/1415-message runaway loop):
+  //   1. status MUST be "pending"
+  //   2. sent_at MUST be null — even if status update fails, a draft with
+  //      a non-null sent_at can NEVER be picked up again
+  //   3. exclude flagged conversations
   const { data: drafts, error } = await supabase
     .from("ai_drafts")
     .select(`
@@ -46,6 +50,7 @@ export async function GET(request: NextRequest) {
       )
     `)
     .eq("status", "pending")
+    .is("sent_at", null)
     .not("auto_send_at", "is", null)
     .lte("auto_send_at", now)
     .neq("conversations.status", "flagged")
@@ -63,6 +68,7 @@ export async function GET(request: NextRequest) {
   console.log("[cron:send-drafts] Found", drafts.length, "drafts to auto-send");
 
   let sentCount = 0;
+  let skipped = 0;
 
   for (const draft of drafts) {
     const conv = draft.conversations as unknown as {
@@ -74,22 +80,65 @@ export async function GET(request: NextRequest) {
     // Only auto-send DMs (comments are handled differently)
     if (conv.source_type === "comment") continue;
 
+    // Circuit breaker: never send more than 1 outbound message to the same
+    // recipient within the last hour. Even if every other safeguard fails,
+    // the worst case is one extra message — not 128.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentCount } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", draft.conversation_id)
+      .eq("direction", "outbound")
+      .gte("sent_at", oneHourAgo);
+
+    if ((recentCount ?? 0) > 0) {
+      console.warn(
+        "[cron:send-drafts] Circuit breaker: already sent",
+        recentCount,
+        "msg(s) to this conversation in last hour. Skipping draft:",
+        draft.id
+      );
+      // Mark this draft as skipped so it never gets picked up again
+      await supabase
+        .from("ai_drafts")
+        .update({ status: "rejected", sent_at: now })
+        .eq("id", draft.id);
+      skipped++;
+      continue;
+    }
+
+    // CRITICAL: mark the draft as sent BEFORE actually sending. If marking
+    // fails, refuse to send. This makes runaway loops impossible — the
+    // record-keeping must succeed first, or the send is aborted.
+    const { error: markErr } = await supabase
+      .from("ai_drafts")
+      .update({
+        status: "sent",
+        sent_at: now,
+        approved_at: now,
+        // approved_by intentionally left null for auto-sends — this column
+        // is a UUID FK to profiles and rejects arbitrary strings (the
+        // original bug was setting it to "auto-draft-cron")
+      })
+      .eq("id", draft.id)
+      .eq("status", "pending") // optimistic lock: only update if still pending
+      .is("sent_at", null);
+
+    if (markErr) {
+      console.error(
+        "[cron:send-drafts] Failed to mark draft as sent — REFUSING to send to avoid loop. draft:",
+        draft.id,
+        "error:",
+        markErr
+      );
+      continue;
+    }
+
     try {
       const messageId = await sendFacebookDM(
         conv.customer_platform_id,
         draft.draft_content
       );
-
-      // Update draft status
-      await supabase
-        .from("ai_drafts")
-        .update({
-          status: "sent",
-          approved_by: "auto-draft-cron",
-          approved_at: now,
-          sent_at: now,
-        })
-        .eq("id", draft.id);
 
       // Store outbound message
       await supabase.from("messages").insert({
@@ -126,10 +175,16 @@ export async function GET(request: NextRequest) {
       sentCount++;
       console.log("[cron:send-drafts] Sent draft:", draft.id);
     } catch (err) {
-      console.error("[cron:send-drafts] Failed to send draft:", draft.id, err);
-      // Don't update status — will retry on next cron run
+      // Send failed AFTER marking as sent. We do NOT roll back the mark —
+      // a stuck send is far better than a runaway loop. Mark as failed for
+      // visibility.
+      console.error("[cron:send-drafts] Send failed after mark — leaving draft marked sent. draft:", draft.id, err);
+      await supabase
+        .from("ai_drafts")
+        .update({ status: "failed" })
+        .eq("id", draft.id);
     }
   }
 
-  return NextResponse.json({ sent: sentCount, total: drafts.length });
+  return NextResponse.json({ sent: sentCount, skipped, total: drafts.length });
 }

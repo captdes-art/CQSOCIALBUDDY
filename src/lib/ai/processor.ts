@@ -165,19 +165,34 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
   });
 
   // ── Determine behavior from settings ──
-  // KILL SWITCH (added 2026-05-02 by Des to track down DM spam):
-  // doAutoSend and doAutoDraft are forced false regardless of DB settings.
-  // Every incoming message gets drafted but waits for manual approval in
-  // the dashboard. To re-enable, also set AUTO_SEND_ENABLED=true on Vercel
-  // and remove these two lines.
+  // The single env-var kill switch (AUTO_SEND_ENABLED) lives in send.ts
+  // and blocks the actual outbound HTTP call. Auto behavior here is
+  // governed by DB settings + the circuit breaker below.
   const mode = isConversationFlagged ? "manual" : getAutomationMode(settings, classification);
-  const _settingsAutoSend = !isConversationFlagged && checkAutoSend(settings, classification, confidence) && !!draftContent;
-  const _settingsAutoDraft = !isConversationFlagged && checkAutoDraft(settings, classification, confidence) && !!draftContent;
-  if (_settingsAutoSend || _settingsAutoDraft) {
-    console.warn("[processor:dm] Auto path requested but kill switch active. classification:", classification, "preview:", (draftContent || "").slice(0, 120));
+  let doAutoSend = !isConversationFlagged && checkAutoSend(settings, classification, confidence) && !!draftContent;
+  let doAutoDraft = !isConversationFlagged && checkAutoDraft(settings, classification, confidence) && !!draftContent;
+
+  // Circuit breaker (added 2026-05-02 after the runaway-loop incident):
+  // never auto-send if we've already sent ANY outbound message to this
+  // conversation in the last hour. Forces the reply to be a manual draft.
+  if (doAutoSend || doAutoDraft) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentOutbound } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", dbConversationId)
+      .eq("direction", "outbound")
+      .gte("sent_at", oneHourAgo);
+    if ((recentOutbound ?? 0) > 0) {
+      console.warn(
+        "[processor:dm] Circuit breaker tripped — already sent",
+        recentOutbound,
+        "msg(s) in last hour. Forcing manual draft."
+      );
+      doAutoSend = false;
+      doAutoDraft = false;
+    }
   }
-  const doAutoSend: boolean = false;
-  const doAutoDraft: boolean = false;
 
   let newStatus: string;
   let draftStatus: string;
@@ -592,6 +607,20 @@ async function storeInboundMessage(
     commentId?: string;
   }
 ): Promise<{ id: string } | null> {
+  // Dedupe: Meta retries webhooks if we don't respond fast enough. If this
+  // platform_message_id has already been stored, skip — don't re-process.
+  // (Added 2026-05-02 as part of the runaway-loop fix.)
+  const { data: existing } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("platform_message_id", params.messageId)
+    .eq("direction", "inbound")
+    .maybeSingle();
+  if (existing) {
+    console.log("[storeInboundMessage] Skipping duplicate webhook for messageId:", params.messageId);
+    return null;
+  }
+
   const { data: stored, error } = await supabase
     .from("messages")
     .insert({
