@@ -165,10 +165,19 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
   });
 
   // ── Determine behavior from settings ──
-  // Flagged conversations are locked down — AI can draft but never auto-send
+  // KILL SWITCH (added 2026-05-02 by Des to track down DM spam):
+  // doAutoSend and doAutoDraft are forced false regardless of DB settings.
+  // Every incoming message gets drafted but waits for manual approval in
+  // the dashboard. To re-enable, also set AUTO_SEND_ENABLED=true on Vercel
+  // and remove these two lines.
   const mode = isConversationFlagged ? "manual" : getAutomationMode(settings, classification);
-  const doAutoSend = !isConversationFlagged && checkAutoSend(settings, classification, confidence) && !!draftContent;
-  const doAutoDraft = !isConversationFlagged && checkAutoDraft(settings, classification, confidence) && !!draftContent;
+  const _settingsAutoSend = !isConversationFlagged && checkAutoSend(settings, classification, confidence) && !!draftContent;
+  const _settingsAutoDraft = !isConversationFlagged && checkAutoDraft(settings, classification, confidence) && !!draftContent;
+  if (_settingsAutoSend || _settingsAutoDraft) {
+    console.warn("[processor:dm] Auto path requested but kill switch active. classification:", classification, "preview:", (draftContent || "").slice(0, 120));
+  }
+  const doAutoSend: boolean = false;
+  const doAutoDraft: boolean = false;
 
   let newStatus: string;
   let draftStatus: string;
@@ -225,10 +234,12 @@ async function processDM(params: IncomingMessageParams): Promise<void> {
       answer_length: claudeAnswer.length,
       automation_mode: mode,
     },
-    ...(doAutoSend && {
-      approved_at: new Date().toISOString(),
-      sent_at: new Date().toISOString(),
-    }),
+    ...(doAutoSend
+      ? {
+          approved_at: new Date().toISOString(),
+          sent_at: new Date().toISOString(),
+        }
+      : {}),
   });
 
   if (draftError) {

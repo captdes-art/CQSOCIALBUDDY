@@ -11,6 +11,16 @@ import { sendFacebookDM } from "@/lib/meta/send";
  * the draft by that time, it gets sent automatically.
  */
 export async function GET(request: NextRequest) {
+  // KILL SWITCH (added 2026-05-02 by Des to track down DM spam):
+  // The schedule has been removed from vercel.json AND this route refuses
+  // to do any work unless AUTO_SEND_ENABLED=true is set on Vercel.
+  // To re-enable later, restore the schedule in vercel.json AND set
+  // AUTO_SEND_ENABLED=true in env vars.
+  if (process.env.AUTO_SEND_ENABLED !== "true") {
+    console.warn("[cron:send-drafts] Hit while kill switch active — refusing to send.");
+    return NextResponse.json({ sent: 0, killSwitch: true });
+  }
+
   // Verify cron secret to prevent unauthorized calls
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

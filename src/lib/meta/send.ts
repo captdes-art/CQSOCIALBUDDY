@@ -62,6 +62,20 @@ async function getTokenForPlatform(platform: string): Promise<string> {
 }
 
 /**
+ * KILL SWITCH (added 2026-05-02 by Des to track down DM spam).
+ *
+ * sendFacebookDM is the ONLY function used by the auto-send paths
+ * (webhook processor + send-drafts cron). The manual-approve flow goes
+ * through sendReply → sendMessage in `client.ts`, NOT through here.
+ *
+ * To re-enable automatic sends in the future, set the env var
+ * AUTO_SEND_ENABLED=true on Vercel. Until then, every call to this
+ * function is logged and refused so we can see exactly what the app
+ * WOULD have sent.
+ */
+const AUTO_SEND_ENABLED = process.env.AUTO_SEND_ENABLED === "true";
+
+/**
  * Send a DM via Facebook Messenger or Instagram.
  * Instagram DMs use /{ig-account-id}/messages with the DB token.
  * Facebook uses /me/messages with the page token.
@@ -71,6 +85,20 @@ export async function sendFacebookDM(
   message: string,
   options?: { platform?: string; pageId?: string }
 ): Promise<string> {
+  if (!AUTO_SEND_ENABLED) {
+    console.warn(
+      "[meta-send] BLOCKED auto-send (kill switch active). recipient:",
+      recipientId,
+      "platform:",
+      options?.platform,
+      "preview:",
+      message.slice(0, 120)
+    );
+    throw new Error(
+      "Auto-send disabled by kill switch (AUTO_SEND_ENABLED=false). Use manual approval flow."
+    );
+  }
+
   const token = await getTokenForPlatform(options?.platform || "facebook_messenger");
 
   // Always use /me/messages — works for both Facebook Messenger and Instagram DMs
@@ -125,6 +153,10 @@ export async function replyToFacebookComment(
   message: string,
   options?: { platform?: string }
 ): Promise<string> {
+  if (!AUTO_SEND_ENABLED) {
+    console.warn("[meta-send] BLOCKED auto comment reply. commentId:", commentId, "preview:", message.slice(0, 120));
+    throw new Error("Auto comment reply disabled by kill switch.");
+  }
   const platform = options?.platform || "facebook_messenger";
   const token = await getTokenForPlatform(platform);
   const isInstagram = platform === "instagram_dm";
@@ -168,6 +200,10 @@ export async function sendPrivateReply(
   message: string,
   options?: { platform?: string }
 ): Promise<string> {
+  if (!AUTO_SEND_ENABLED) {
+    console.warn("[meta-send] BLOCKED auto private reply. commentId:", commentId, "preview:", message.slice(0, 120));
+    throw new Error("Auto private reply disabled by kill switch.");
+  }
   const token = await getTokenForPlatform(options?.platform || "facebook_messenger");
 
   console.log("[meta-send] Sending private reply for comment:", commentId);
